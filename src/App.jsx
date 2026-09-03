@@ -2353,6 +2353,28 @@ function VueProfil({ profil, onSave, onLogin, onLogout, nbProjets, onVoirPro }) 
   const [erreur, setErreur] = useState("");
   const [debugInfo, setDebugInfo] = useState("");
   const [chargement, setChargement] = useState(false);
+  const [chargementPortail, setChargementPortail] = useState(false);
+  const [erreurPortail, setErreurPortail] = useState("");
+
+  async function onGererAbonnement() {
+    setErreurPortail(""); setChargementPortail(true);
+    try {
+      const res = await fetch(ACCOUNT_API_PORTAL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: profil.email }),
+      });
+      const data = await res.json();
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        setErreurPortail("Impossible d'ouvrir le portail. Réessaie dans un instant.");
+      }
+    } catch (e) {
+      setErreurPortail("Erreur réseau, réessaie dans un instant.");
+    }
+    setChargementPortail(false);
+  }
 
   if (profil?.nom) {
     const initiales = profil.nom.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
@@ -2393,7 +2415,13 @@ function VueProfil({ profil, onSave, onLogin, onLogout, nbProjets, onVoirPro }) 
           {!estPro(profil) && (
             <button onClick={onVoirPro} className="px-3 py-1.5 rounded-full font-semibold" style={{ fontSize: "11.5px", background: C.gradient, color: "#fff", ...font }}>Passer Pro</button>
           )}
+          {estPro(profil) && (
+            <button onClick={onGererAbonnement} disabled={chargementPortail} className="px-3 py-1.5 rounded-full font-semibold" style={{ fontSize: "11.5px", background: "rgba(255,255,255,0.1)", color: "#fff", ...font }}>
+              {chargementPortail ? "..." : "Gérer mon abonnement"}
+            </button>
+          )}
         </div>
+        {erreurPortail && <p className="mb-3 text-center" style={{ fontSize: "12px", color: "#F87171", ...font }}>{erreurPortail}</p>}
 
         <div className="rounded-2xl p-4 mb-4 exion-fade flex items-start gap-2.5" style={{ background: "rgba(139,92,246,0.10)", border: "1px solid #3A3D6B" }}>
           <Info size={16} color="#C4B5FD" className="shrink-0 mt-0.5" />
@@ -2504,6 +2532,7 @@ const CHAT_API_ENDPOINT = "https://primary-production-a6e13.up.railway.app/webho
 const ACCOUNT_API_SIGNUP = "https://primary-production-a6e13.up.railway.app/webhook/exion-signup";
 const ACCOUNT_API_LOGIN = "https://primary-production-a6e13.up.railway.app/webhook/exion-login";
 const ACCOUNT_API_CHECKOUT = "https://primary-production-a6e13.up.railway.app/webhook/exion-checkout";
+const ACCOUNT_API_PORTAL = "https://primary-production-a6e13.up.railway.app/webhook/exion-portal";
 const CHAT_LIMIT_INVITE = 3;
 const CHAT_LIMIT_MEMBRE = 15;
 const FREE_ANALYSES_PAR_MOIS = 1;
