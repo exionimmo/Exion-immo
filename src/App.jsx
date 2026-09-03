@@ -1041,13 +1041,13 @@ function VueChecklist({ onBack }) {
   const [coche, setCoche] = useState({});
   useEffect(() => {
     (async () => {
-      try { const r = await window.storage?.get("checklist"); if (r?.value) setCoche(JSON.parse(r.value)); } catch (e) {}
+      try { const raw = localStorage.getItem("checklist"); if (raw) setCoche(JSON.parse(raw)); } catch (e) {}
     })();
   }, []);
   function toggle(i) {
     const next = { ...coche, [i]: !coche[i] };
     setCoche(next);
-    window.storage?.set("checklist", JSON.stringify(next)).catch(() => {});
+    try { localStorage.setItem("checklist", JSON.stringify(next)); } catch (e) {}
   }
   const total = CHECKLIST_ITEMS.length;
   const faits = CHECKLIST_ITEMS.reduce((s, _, i) => s + (coche[i] ? 1 : 0), 0);
@@ -2500,7 +2500,10 @@ function VueProfil({ profil, onSave, onLogin, onLogout, nbProjets, onVoirPro }) 
             const res = await onLogin(email.trim());
             setChargement(false);
             if (!res.ok) {
-              setErreur("Aucun compte trouvé avec cet email sur cet appareil. Crée un compte si c'est ta première visite.");
+              const estErreurReseau = (res.debug || []).some((d) => /erreur réseau/i.test(d));
+              setErreur(estErreurReseau
+                ? "Impossible de contacter le serveur pour le moment. Vérifie ta connexion et réessaie."
+                : "Aucun compte trouvé avec cet email sur cet appareil. Crée un compte si c'est ta première visite.");
               setDebugInfo((res.debug || []).join(" · "));
             }
           }}
@@ -2519,7 +2522,7 @@ function VueProfil({ profil, onSave, onLogin, onLogout, nbProjets, onVoirPro }) 
 /* ============================================================
    ASSISTANT IA — spécialisé immobilier, avec limite d'usage
    quotidienne (3 questions pour un visiteur, 15 pour un
-   compte créé). Compteur stocké dans window.storage.
+   compte créé). Compteur stocké dans localStorage.
 
    Le endpoint pointe vers un webhook n8n (voir le workflow
    "Exion - Chat IA Immobilier" fourni séparément) qui détient
@@ -2632,23 +2635,21 @@ function ChatIA({ contexte, onClose, profil, onCreerCompte }) {
   useEffect(() => { finRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await window.storage?.get("chat-usage");
-        if (res?.value) {
-          const data = JSON.parse(res.value);
-          if (data.date === todayKey()) setUtilisees(data.count || 0);
-        }
-      } catch (e) {}
-      setPretChargement(true);
-    })();
+    try {
+      const raw = localStorage.getItem("chat-usage");
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data.date === todayKey()) setUtilisees(data.count || 0);
+      }
+    } catch (e) {}
+    setPretChargement(true);
   }, []);
 
   const restantes = Math.max(0, limite - utilisees);
   const limiteAtteinte = pretChargement && restantes <= 0;
 
   function enregistrerUsage(count) {
-    window.storage?.set("chat-usage", JSON.stringify({ date: todayKey(), count })).catch(() => {});
+    try { localStorage.setItem("chat-usage", JSON.stringify({ date: todayKey(), count })); } catch (e) {}
   }
 
   async function envoyer() {
@@ -2794,17 +2795,15 @@ export default function App() {
   const [profil, setProfil] = useState(null);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await window.storage?.get("session");
-        if (res?.value) setProfil(JSON.parse(res.value));
-      } catch (e) {}
-    })();
+    try {
+      const raw = localStorage.getItem("session");
+      if (raw) setProfil(JSON.parse(raw));
+    } catch (e) {}
   }, []);
 
   async function creerCompte(data) {
     setProfil(data);
-    window.storage?.set("session", JSON.stringify(data)).catch(() => {});
+    try { localStorage.setItem("session", JSON.stringify(data)); } catch (e) {}
     try {
       await fetch(ACCOUNT_API_SIGNUP, {
         method: "POST",
@@ -2826,7 +2825,7 @@ export default function App() {
       if (data.ok) {
         const trouve = { nom: data.nom, email: data.email, plan: data.plan || "free" };
         setProfil(trouve);
-        window.storage?.set("session", JSON.stringify(trouve)).catch(() => {});
+        try { localStorage.setItem("session", JSON.stringify(trouve)); } catch (e) {}
         return { ok: true, debug: [] };
       }
       return { ok: false, debug: [] };
@@ -2847,20 +2846,20 @@ export default function App() {
 
   function deconnecter() {
     setProfil(null);
-    window.storage?.delete("session").catch(() => {});
+    try { localStorage.removeItem("session"); } catch (e) {}
   }
 
   useEffect(() => {
-    (async () => { try { const res = await window.storage?.get("analyses"); if (res?.value) setProjets(JSON.parse(res.value)); } catch (e) {} })();
-    (async () => { try { const res = await window.storage?.get("credit-sim"); if (res?.value) setCredit(JSON.parse(res.value)); } catch (e) {} })();
-    (async () => { try { const res = await window.storage?.get("bien-sim"); if (res?.value) setBien(JSON.parse(res.value)); } catch (e) {} })();
-    (async () => { try { const res = await window.storage?.get("travaux-sim"); if (res?.value) setTravaux(JSON.parse(res.value)); } catch (e) {} })();
+    try { const raw = localStorage.getItem("analyses"); if (raw) setProjets(JSON.parse(raw)); } catch (e) {}
+    try { const raw = localStorage.getItem("credit-sim"); if (raw) setCredit(JSON.parse(raw)); } catch (e) {}
+    try { const raw = localStorage.getItem("bien-sim"); if (raw) setBien(JSON.parse(raw)); } catch (e) {}
+    try { const raw = localStorage.getItem("travaux-sim"); if (raw) setTravaux(JSON.parse(raw)); } catch (e) {}
   }, []);
 
   function updateCredit(updater) {
     setCredit((prev) => {
       const next = typeof updater === "function" ? updater(prev) : updater;
-      window.storage?.set("credit-sim", JSON.stringify(next)).catch(() => {});
+      try { localStorage.setItem("credit-sim", JSON.stringify(next)); } catch (e) {}
       return next;
     });
   }
@@ -2868,7 +2867,7 @@ export default function App() {
   function updateBien(updater) {
     setBien((prev) => {
       const next = typeof updater === "function" ? updater(prev) : updater;
-      window.storage?.set("bien-sim", JSON.stringify(next)).catch(() => {});
+      try { localStorage.setItem("bien-sim", JSON.stringify(next)); } catch (e) {}
       return next;
     });
   }
@@ -2876,7 +2875,7 @@ export default function App() {
   function updateTravaux(updater) {
     setTravaux((prev) => {
       const next = typeof updater === "function" ? updater(prev) : updater;
-      window.storage?.set("travaux-sim", JSON.stringify(next)).catch(() => {});
+      try { localStorage.setItem("travaux-sim", JSON.stringify(next)); } catch (e) {}
       return next;
     });
   }
@@ -2903,7 +2902,7 @@ export default function App() {
     const nouveauProjet = { id: Date.now(), ...rFinal };
     const liste = [nouveauProjet, ...projets].slice(0, 20);
     setProjets(liste);
-    try { await window.storage?.set("analyses", JSON.stringify(liste)); } catch (e) {}
+    try { localStorage.setItem("analyses", JSON.stringify(liste)); } catch (e) {}
   }
 
   function ouvrirOutil(id) {
