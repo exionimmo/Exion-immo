@@ -2375,15 +2375,15 @@ const FAQ_APP = [
 ];
 
 const TEXTE_MENTIONS_LEGALES = `ÉDITEUR DU SITE
-L'application Exion Immo est éditée par [Nom de la société / auto-entrepreneur], [forme juridique], au capital de [montant] €, immatriculée sous le numéro SIRET [numéro], dont le siège social est situé [adresse].
-Directeur de la publication : [Nom]
+L'application Exion Immo est éditée par Tony Ozanne, entrepreneur individuel (auto-entrepreneur), immatriculé sous le numéro SIRET 982 055 048 00010, dont le siège est situé 61 rue Lambot, 83143 Le Val, France.
+Directeur de la publication : Tony Ozanne
 Contact : exion.agentia@gmail.com
 
 HÉBERGEMENT
 L'application est hébergée par Vercel Inc. (front-end) et Railway Corp. (backend et base de données). Les serveurs applicatifs sont situés dans l'Union européenne ou aux États-Unis selon le service.
 
 PROPRIÉTÉ INTELLECTUELLE
-L'ensemble des contenus, textes, visuels, logos et éléments graphiques présents sur Exion Immo sont la propriété exclusive de [Nom de la société], sauf mention contraire. Toute reproduction sans autorisation est interdite.
+L'ensemble des contenus, textes, visuels, logos et éléments graphiques présents sur Exion Immo sont la propriété exclusive de Tony Ozanne, sauf mention contraire. Toute reproduction sans autorisation est interdite.
 
 RESPONSABILITÉ
 Les informations et estimations fournies par Exion Immo (prix au m², loyers, rentabilité, etc.) le sont à titre purement indicatif et ne sauraient engager la responsabilité de l'éditeur en cas d'inexactitude.`;
@@ -2471,7 +2471,7 @@ function VueLegale({ page, onBack }) {
             </p>
           </div>
         )}
-        {["mentions", "cgu", "confidentialite"].includes(page) && (
+        {["cgu", "confidentialite"].includes(page) && (
           <div className="rounded-2xl p-4 mt-4 exion-fade flex items-start gap-2.5" style={{ background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.3)" }}>
             <AlertTriangle size={16} color="#F59E0B" className="shrink-0 mt-0.5" />
  <p style={{ fontSize: "12px", lineHeight: "1.5", color: "#FDE68A", ...font }}>Texte générique à personnaliser (informations entre crochets) avant publication officielle.</p>
