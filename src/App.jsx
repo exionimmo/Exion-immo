@@ -2034,15 +2034,29 @@ function VueFormulaire({ onCalculer, chargement, onBack, credit, setCredit, bien
 
 function InfoTip({ text }) {
   const [ouvert, setOuvert] = useState(false);
+  const btnRef = useRef(null);
+  const [style, setStyle] = useState({});
+  useEffect(() => {
+    if (!ouvert || !btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    const largeur = Math.min(240, window.innerWidth - 24);
+    let left = rect.left;
+    if (left + largeur > window.innerWidth - 12) left = window.innerWidth - largeur - 12;
+    if (left < 12) left = 12;
+    setStyle({ left, top: rect.bottom + 6, width: largeur });
+  }, [ouvert]);
   return (
     <span className="relative inline-flex">
-      <button onClick={(e) => { e.stopPropagation(); setOuvert((v) => !v); }} className="flex items-center justify-center" style={{ width: 16, height: 16 }} aria-label="Explication">
+      <button ref={btnRef} onClick={(e) => { e.stopPropagation(); setOuvert((v) => !v); }} className="flex items-center justify-center" style={{ width: 16, height: 16 }} aria-label="Explication">
         <Info size={13} color={C.onDarkMuted} />
       </button>
       {ouvert && (
-        <div className="exion-pop absolute z-10 left-0 top-5 w-56 p-3 rounded-2xl" style={{ background: "#0E1130", border: "1px solid #3A3D6B", boxShadow: "0 10px 28px rgba(0,0,0,0.4)" }}>
-          <p style={{ fontSize: "11.5px", lineHeight: "1.5", color: C.onDark, ...font }}>{text}</p>
-        </div>
+        <>
+          <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setOuvert(false); }} />
+          <div className="exion-pop fixed z-20 p-3 rounded-2xl" style={{ ...style, background: "#0E1130", border: "1px solid #3A3D6B", boxShadow: "0 10px 28px rgba(0,0,0,0.4)" }}>
+            <p style={{ fontSize: "11.5px", lineHeight: "1.5", color: C.onDark, ...font }}>{text}</p>
+          </div>
+        </>
       )}
     </span>
   );
