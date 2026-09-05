@@ -2364,7 +2364,134 @@ function VueResultat({ r, onDiscuter, onBack, onVoirDetail }) {
   );
 }
 
-function VueProfil({ profil, onSave, onLogin, onLogout, nbProjets, onVoirPro }) {
+const FAQ_APP = [
+  { q: "Comment sont calculées les estimations de prix et de loyer ?", a: "Exion Immo s'appuie sur des données publiques de transactions immobilières (DVF) quand elles couvrent la commune ou le département, et à défaut sur une estimation par IA à partir des caractéristiques du bien. Ce sont des ordres de grandeur, pas des expertises officielles." },
+  { q: "Les résultats remplacent-ils l'avis d'un professionnel ?", a: "Non. Exion Immo t'aide à dégrossir un dossier rapidement, mais pour toute décision engageante (offre, prêt, signature), il est indispensable de consulter un notaire, un courtier ou un conseiller." },
+  { q: "Mes analyses sont-elles sauvegardées si je change de téléphone ?", a: "Tes analyses, ton profil et tes simulations sont stockés sur l'appareil que tu utilises. Si tu changes de téléphone ou de navigateur, tu ne les retrouveras pas automatiquement." },
+  { q: "Comment fonctionne l'abonnement Pro ?", a: "Le plan Pro débloque des fonctionnalités avancées. Tu peux gérer ou résilier ton abonnement à tout moment depuis l'onglet Profil, via le bouton \"Gérer mon abonnement\"." },
+  { q: "Le chat IA a-t-il une limite de questions ?", a: "Oui : 3 questions par jour pour un visiteur, 15 pour un compte enregistré. Le compteur se réinitialise chaque jour." },
+  { q: "Comment supprimer mon compte ou mes données ?", a: "Contacte-nous à [email de contact] en précisant l'adresse email de ton compte : nous supprimons tes données sous [délai] jours ouvrés." },
+  { q: "D'où viennent les prix de marché affichés ?", a: "Des bases de données publiques (DVF) quand elles couvrent la commune, sinon d'une estimation par IA calibrée sur des données de marché récentes." },
+];
+
+const TEXTE_MENTIONS_LEGALES = `ÉDITEUR DU SITE
+L'application Exion Immo est éditée par [Nom de la société / auto-entrepreneur], [forme juridique], au capital de [montant] €, immatriculée sous le numéro SIRET [numéro], dont le siège social est situé [adresse].
+Directeur de la publication : [Nom]
+Contact : [email de contact]
+
+HÉBERGEMENT
+L'application est hébergée par Vercel Inc. (front-end) et Railway Corp. (backend et base de données). Les serveurs applicatifs sont situés dans l'Union européenne ou aux États-Unis selon le service.
+
+PROPRIÉTÉ INTELLECTUELLE
+L'ensemble des contenus, textes, visuels, logos et éléments graphiques présents sur Exion Immo sont la propriété exclusive de [Nom de la société], sauf mention contraire. Toute reproduction sans autorisation est interdite.
+
+RESPONSABILITÉ
+Les informations et estimations fournies par Exion Immo (prix au m², loyers, rentabilité, etc.) le sont à titre purement indicatif et ne sauraient engager la responsabilité de l'éditeur en cas d'inexactitude.`;
+
+const TEXTE_CGU = `1. OBJET
+Les présentes conditions générales d'utilisation (CGU) régissent l'accès et l'utilisation de l'application Exion Immo par tout utilisateur.
+
+2. DESCRIPTION DU SERVICE
+Exion Immo propose des outils d'aide à la décision pour l'investissement locatif : estimation de prix, simulation de crédit, calcul de rentabilité, checklist travaux et assistant conversationnel.
+
+3. COMPTE UTILISATEUR
+La création d'un compte permet de sauvegarder tes analyses sur l'appareil utilisé. Tu es responsable de l'exactitude des informations fournies.
+
+4. LIMITES DE RESPONSABILITÉ
+Les estimations, calculs et analyses fournis par Exion Immo sont indicatifs et ne constituent ni un conseil financier, ni un conseil juridique, ni une expertise immobilière. Toute décision d'investissement doit être validée par un professionnel qualifié (notaire, courtier, conseiller en gestion de patrimoine).
+
+5. ABONNEMENT ET PAIEMENT
+L'offre Pro est proposée sous forme d'abonnement, résiliable à tout moment depuis l'onglet Profil. Aucun remboursement au prorata n'est effectué en cas de résiliation en cours de période, sauf disposition légale contraire.
+
+6. RÉSILIATION
+Exion Immo se réserve le droit de suspendre l'accès au service en cas de manquement aux présentes CGU.
+
+7. MODIFICATION DES CGU
+Les présentes CGU peuvent être modifiées à tout moment ; la version en vigueur est celle disponible dans l'application.`;
+
+const TEXTE_CONFIDENTIALITE = `1. DONNÉES COLLECTÉES
+Nom, adresse email, et les informations que tu saisis dans le cadre de tes simulations (ville, prix, revenus, etc.).
+
+2. FINALITÉ DU TRAITEMENT
+Ces données servent à sauvegarder tes analyses, personnaliser ton expérience et, le cas échéant, gérer ton abonnement Pro.
+
+3. CONSERVATION DES DONNÉES
+Tes données sont conservées tant que ton compte est actif. Certaines informations (analyses, simulations) restent stockées localement sur ton appareil.
+
+4. PARTAGE DES DONNÉES
+Tes données ne sont ni vendues ni partagées avec des tiers à des fins commerciales. Elles peuvent être transmises à nos prestataires techniques (hébergement, paiement) dans la stricte mesure nécessaire au fonctionnement du service.
+
+5. TES DROITS (RGPD)
+Conformément au Règlement Général sur la Protection des Données, tu disposes d'un droit d'accès, de rectification, d'opposition et de suppression de tes données. Pour exercer ces droits, contacte-nous à [email de contact].
+
+6. COOKIES
+L'application peut utiliser des cookies ou équivalents techniques nécessaires à son fonctionnement (session, préférences).`;
+
+function VueLegale({ page, onBack }) {
+  const [ouvert, setOuvert] = useState(null);
+  const TITRES = { faq: "FAQ", mentions: "Mentions légales", cgu: "CGU", confidentialite: "Politique de confidentialité" };
+  return (
+    <div>
+      <BackHeader title={TITRES[page] || "Informations"} onBack={onBack} />
+      <div className="px-5 pt-3 pb-28">
+        {page === "faq" ? (
+          <div className="space-y-2">
+            {FAQ_APP.map((item, i) => {
+              const isOpen = ouvert === i;
+              return (
+                <button key={i} onClick={() => setOuvert(isOpen ? null : i)} className="w-full text-left exion-press">
+                  <div className="rounded-2xl p-4" style={{ background: C.bgSoft, border: `1px solid ${isOpen ? "#8B5CF666" : "#2A3A5C"}` }}>
+                    <div className="flex items-center justify-between gap-3">
+ <span className="font-semibold" style={{ fontSize: "14px", color: C.onDark, ...font }}>{item.q}</span>
+                      <ChevronDown size={16} color="#8B5CF6" className="shrink-0" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+                    </div>
+                    {isOpen && (
+ <p className="mt-2.5 pt-2.5 exion-fade" style={{ fontSize: "13px", lineHeight: "1.55", color: C.onDarkMuted, borderTop: "1px solid #2A3A5C", whiteSpace: "pre-line", ...font }}>{item.a}</p>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-2xl p-4 exion-fade" style={{ background: C.bgSoft, border: "1px solid #2A3A5C" }}>
+            <p style={{ fontSize: "12.5px", lineHeight: "1.7", color: C.onDarkMuted, whiteSpace: "pre-line", ...font }}>
+              {page === "mentions" ? TEXTE_MENTIONS_LEGALES : page === "cgu" ? TEXTE_CGU : TEXTE_CONFIDENTIALITE}
+            </p>
+          </div>
+        )}
+        {page !== "faq" && (
+          <div className="rounded-2xl p-4 mt-4 exion-fade flex items-start gap-2.5" style={{ background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.3)" }}>
+            <AlertTriangle size={16} color="#F59E0B" className="shrink-0 mt-0.5" />
+ <p style={{ fontSize: "12px", lineHeight: "1.5", color: "#FDE68A", ...font }}>Texte générique à personnaliser (informations entre crochets) avant publication officielle.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LiensLegaux({ onOuvrirLegal }) {
+  const items = [
+    { id: "faq", label: "FAQ", icon: HelpCircle },
+    { id: "mentions", label: "Mentions légales", icon: FileText },
+    { id: "cgu", label: "Conditions générales d'utilisation", icon: FileText },
+    { id: "confidentialite", label: "Politique de confidentialité", icon: Lock },
+  ];
+  return (
+    <div className="rounded-2xl mt-4 exion-fade overflow-hidden" style={{ background: C.bgSoft, border: "1px solid #2A3A5C" }}>
+      {items.map((it, i) => (
+        <button key={it.id} onClick={() => onOuvrirLegal(it.id)} className="w-full flex items-center gap-3 px-4 py-3.5 exion-press" style={{ borderTop: i > 0 ? "1px solid #22304C" : "none" }}>
+          <it.icon size={16} color={C.onDarkMuted} className="shrink-0" />
+ <span className="flex-1 text-left" style={{ fontSize: "13.5px", color: C.onDark, ...font }}>{it.label}</span>
+          <ChevronRight size={16} color={C.onDarkMuted} className="shrink-0" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function VueProfil({ profil, onSave, onLogin, onLogout, nbProjets, onVoirPro, onOuvrirLegal }) {
   const [mode, setMode] = useState("creation"); // "creation" | "connexion"
   const [nom, setNom] = useState("");
   const [email, setEmail] = useState("");
@@ -2449,6 +2576,7 @@ function VueProfil({ profil, onSave, onLogin, onLogout, nbProjets, onVoirPro }) 
         <button onClick={onLogout} className="w-full text-center py-3 rounded-2xl font-semibold exion-press" style={{ fontSize: '14px', background: "rgba(239,68,68,0.12)", color: "#F87171", border: "1px solid rgba(239,68,68,0.3)", ...font }}>
           Se déconnecter
         </button>
+        <LiensLegaux onOuvrirLegal={onOuvrirLegal} />
       </div>
     );
   }
@@ -2533,6 +2661,7 @@ function VueProfil({ profil, onSave, onLogin, onLogout, nbProjets, onVoirPro }) 
       )}
  {debugInfo && <p className="mb-2" style={{ fontSize: '10px', fontFamily: "monospace", color: "#6B7688", lineHeight: '1.5' }}>{debugInfo}</p>}
  <p className="text-center" style={{ fontSize: '11px', color: C.onDarkMuted, lineHeight: '1.4', ...font }}>Aucun mot de passe requis pour l'instant — tes données restent stockées sur cet appareil.</p>
+      <LiensLegaux onOuvrirLegal={onOuvrirLegal} />
     </div>
   );
 }
@@ -2799,6 +2928,7 @@ function NavBar({ vue, setVue }) {
 export default function App() {
   useGlobalStyles();
   const [vue, setVue] = useState("accueil");
+  const [pageLegale, setPageLegale] = useState("faq");
   const [projets, setProjets] = useState([]);
   const [resultat, setResultat] = useState(null);
   const [chatOuvert, setChatOuvert] = useState(false);
@@ -2992,7 +3122,8 @@ export default function App() {
         {vue === "formulaire" && <VueFormulaire onCalculer={lancerAnalyse} chargement={chargement} onBack={() => setVue("accueil")} credit={credit} setCredit={updateCredit} bien={bien} setBien={updateBien} travaux={travaux} setTravaux={updateTravaux} />}
         {vue === "resultat" && <VueResultat r={resultat} onDiscuter={() => setChatOuvert(true)} onBack={() => setVue("accueil")} />}
         {vue === "projets" && <VueProjets projets={projets} onNouveau={() => setVue("formulaire")} onOuvrir={(p) => { setResultat(p); setVue("resultat"); }} onSupprimer={supprimerProjet} />}
-        {vue === "profil" && <VueProfil profil={profil} onSave={creerCompte} onLogin={connecter} onLogout={deconnecter} nbProjets={projets.length} onVoirPro={() => { setRaisonPro(""); setVue("pro"); }} />}
+        {vue === "profil" && <VueProfil profil={profil} onSave={creerCompte} onLogin={connecter} onLogout={deconnecter} nbProjets={projets.length} onVoirPro={() => { setRaisonPro(""); setVue("pro"); }} onOuvrirLegal={(p) => { setPageLegale(p); setVue("legal"); }} />}
+        {vue === "legal" && <VueLegale page={pageLegale} onBack={() => setVue("profil")} />}
 
         {chatOuvert && <ChatIA contexte={resultat} onClose={() => setChatOuvert(false)} profil={profil} onCreerCompte={() => { setChatOuvert(false); setVue("profil"); }} />}
         {!chatOuvert && ["accueil", "biens", "outils", "projets", "profil"].includes(vue) && (
