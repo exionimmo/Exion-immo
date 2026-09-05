@@ -2626,13 +2626,26 @@ function EcranPro({ onBack, raison, profil, onDemandeCompte }) {
 
 function ChatIA({ contexte, onClose, profil, onCreerCompte }) {
   const limite = profil?.nom ? CHAT_LIMIT_MEMBRE : CHAT_LIMIT_INVITE;
-  const [messages, setMessages] = useState([{ role: "assistant", text: contexte ? "Pose-moi tes questions sur ce bien…" : "Pose-moi tes questions sur l'investissement immobilier !" }]);
+  const [messages, setMessages] = useState(() => {
+    try {
+      const raw = localStorage.getItem("chat-messages");
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (Array.isArray(saved) && saved.length) return saved;
+      }
+    } catch (e) {}
+    return [{ role: "assistant", text: contexte ? "Pose-moi tes questions sur ce bien…" : "Pose-moi tes questions sur l'investissement immobilier !" }];
+  });
   const [saisie, setSaisie] = useState("");
   const [loading, setLoading] = useState(false);
   const [utilisees, setUtilisees] = useState(0);
   const [pretChargement, setPretChargement] = useState(false);
   const finRef = useRef(null);
   useEffect(() => { finRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  useEffect(() => {
+    try { localStorage.setItem("chat-messages", JSON.stringify(messages.slice(-40))); } catch (e) {}
+  }, [messages]);
 
   useEffect(() => {
     try {
