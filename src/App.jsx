@@ -155,21 +155,16 @@ function loyerM2Departement(codePostal, estAppartement) {
 
 async function estimerLoyerIA(ville, codePostal, typeBien, prixM2Marche) {
   try {
-    const prompt = `Tu es un expert du marche locatif francais qui travaille avec des agences immobilieres. Pour un ${typeBien.toLowerCase()} a ${ville} (code postal ${codePostal}), le prix de marche a l'achat est d'environ ${prixM2Marche} EUR/m2 dans ce secteur. Indique le loyer au m2 par mois (hors charges) reellement demande et obtenu par les agences locales pour ce type de bien dans cette commune ou les communes tres proches, pas une moyenne nationale theorique ni un chiffre prudent. Les petites communes rurales ou peri-urbaines ont souvent des loyers proportionnellement plus eleves par rapport a leur prix d'achat que les grandes villes : tiens-en compte. Reponds UNIQUEMENT avec un objet JSON strict, sans aucun texte autour, sans balises markdown, exactement au format : {"loyerM2": nombre}`;
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch(ESTIMER_LOYER_API_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 150,
-        messages: [{ role: "user", content: prompt }],
-      }),
+      body: JSON.stringify({ ville, codePostal, typeBien, prixM2Marche }),
     });
-    const data = await res.json();
-    const texte = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
-    const clean = texte.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(clean);
-    const val = Number(parsed.loyerM2);
+    const brut = await res.text();
+    let data;
+    try { data = JSON.parse(brut); } catch (e) { return null; }
+    if (!res.ok) return null;
+    const val = Number(data.loyerM2);
     if (val > 1 && val < 60) return val; // garde-fou : plage plausible en EUR/m2/mois
     return null;
   } catch (e) {
@@ -2532,6 +2527,7 @@ function VueProfil({ profil, onSave, onLogin, onLogout, nbProjets, onVoirPro }) 
    fois le workflow importé et activé dans n8n.
 ============================================================ */
 const CHAT_API_ENDPOINT = "https://primary-production-a6e13.up.railway.app/webhook/exion-chat-ia";
+const ESTIMER_LOYER_API_ENDPOINT = "https://primary-production-a6e13.up.railway.app/webhook/exion-estimer-loyer";
 const ACCOUNT_API_SIGNUP = "https://primary-production-a6e13.up.railway.app/webhook/exion-signup";
 const ACCOUNT_API_LOGIN = "https://primary-production-a6e13.up.railway.app/webhook/exion-login";
 const ACCOUNT_API_CHECKOUT = "https://primary-production-a6e13.up.railway.app/webhook/exion-checkout";
