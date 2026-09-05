@@ -2507,6 +2507,7 @@ function VueProfil({ profil, onSave, onLogin, onLogout, nbProjets, onVoirPro, on
   const [mode, setMode] = useState("creation"); // "creation" | "connexion"
   const [nom, setNom] = useState("");
   const [email, setEmail] = useState("");
+  const [accepteCGU, setAccepteCGU] = useState(false);
   const [erreur, setErreur] = useState("");
   const [debugInfo, setDebugInfo] = useState("");
   const [chargement, setChargement] = useState(false);
@@ -2633,6 +2634,14 @@ function VueProfil({ profil, onSave, onLogin, onLogout, nbProjets, onVoirPro, on
  <label className="font-semibold block mb-1.5" style={{ fontSize: '12.5px', color: C.onDarkMuted, ...font }}>Email</label>
           <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="ton@email.com" style={{ ...inputBase, fontSize: '15px' }} className="w-full px-4 py-3.5 rounded-2xl outline-none" />
         </div>
+        {mode === "creation" && (
+          <label className="flex items-start gap-2.5 exion-press" style={{ cursor: "pointer" }}>
+            <input type="checkbox" checked={accepteCGU} onChange={(e) => setAccepteCGU(e.target.checked)} className="mt-0.5 shrink-0" style={{ width: 16, height: 16, accentColor: "#8B5CF6" }} />
+ <span style={{ fontSize: '12px', color: C.onDarkMuted, lineHeight: '1.5', ...font }}>
+              J'accepte les <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOuvrirLegal("cgu"); }} style={{ color: "#C4B5FD", textDecoration: "underline" }}>conditions générales d'utilisation</button> et la <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOuvrirLegal("confidentialite"); }} style={{ color: "#C4B5FD", textDecoration: "underline" }}>politique de confidentialité</button>.
+            </span>
+          </label>
+        )}
  {erreur && <p style={{ fontSize: '12.5px', color: "#F87171", ...font }}>{erreur}</p>}
       </div>
 
@@ -2641,8 +2650,9 @@ function VueProfil({ profil, onSave, onLogin, onLogout, nbProjets, onVoirPro, on
           onClick={() => {
             if (!nom.trim() || !email.trim()) { setErreur("Renseigne ton nom et ton email pour continuer."); return; }
             if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setErreur("Cet email ne semble pas valide."); return; }
+            if (!accepteCGU) { setErreur("Merci d'accepter les CGU et la politique de confidentialité pour continuer."); return; }
             setErreur("");
-            onSave({ nom: nom.trim(), email: email.trim() });
+            onSave({ nom: nom.trim(), email: email.trim(), cguAccepteesLe: new Date().toISOString() });
           }}
           className="w-full text-center py-3.5 rounded-2xl font-bold exion-press mb-3"
           style={{ fontSize: '15px', color: "#fff", background: C.gradient, ...font }}
@@ -2990,7 +3000,7 @@ export default function App() {
       await fetch(ACCOUNT_API_SIGNUP, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nom: data.nom, email: data.email }),
+        body: JSON.stringify({ nom: data.nom, email: data.email, cguAccepteesLe: data.cguAccepteesLe }),
       });
     } catch (e) { console.error("Exion: échec création compte serveur", e); }
   }
