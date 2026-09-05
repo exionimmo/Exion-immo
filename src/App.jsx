@@ -2370,14 +2370,14 @@ const FAQ_APP = [
   { q: "Mes analyses sont-elles sauvegardées si je change de téléphone ?", a: "Tes analyses, ton profil et tes simulations sont stockés sur l'appareil que tu utilises. Si tu changes de téléphone ou de navigateur, tu ne les retrouveras pas automatiquement." },
   { q: "Comment fonctionne l'abonnement Pro ?", a: "Le plan Pro débloque des fonctionnalités avancées. Tu peux gérer ou résilier ton abonnement à tout moment depuis l'onglet Profil, via le bouton \"Gérer mon abonnement\"." },
   { q: "Le chat IA a-t-il une limite de questions ?", a: "Oui : 3 questions par jour pour un visiteur, 15 pour un compte enregistré. Le compteur se réinitialise chaque jour." },
-  { q: "Comment supprimer mon compte ou mes données ?", a: "Contacte-nous à [email de contact] en précisant l'adresse email de ton compte : nous supprimons tes données sous [délai] jours ouvrés." },
+  { q: "Comment supprimer mon compte ou mes données ?", a: "Contacte-nous à exion.agentia@gmail.com en précisant l'adresse email de ton compte : nous supprimons tes données sous [délai] jours ouvrés." },
   { q: "D'où viennent les prix de marché affichés ?", a: "Des bases de données publiques (DVF) quand elles couvrent la commune, sinon d'une estimation par IA calibrée sur des données de marché récentes." },
 ];
 
 const TEXTE_MENTIONS_LEGALES = `ÉDITEUR DU SITE
 L'application Exion Immo est éditée par [Nom de la société / auto-entrepreneur], [forme juridique], au capital de [montant] €, immatriculée sous le numéro SIRET [numéro], dont le siège social est situé [adresse].
 Directeur de la publication : [Nom]
-Contact : [email de contact]
+Contact : exion.agentia@gmail.com
 
 HÉBERGEMENT
 L'application est hébergée par Vercel Inc. (front-end) et Railway Corp. (backend et base de données). Les serveurs applicatifs sont situés dans l'Union européenne ou aux États-Unis selon le service.
@@ -2422,14 +2422,14 @@ Tes données sont conservées tant que ton compte est actif. Certaines informati
 Tes données ne sont ni vendues ni partagées avec des tiers à des fins commerciales. Elles peuvent être transmises à nos prestataires techniques (hébergement, paiement) dans la stricte mesure nécessaire au fonctionnement du service.
 
 5. TES DROITS (RGPD)
-Conformément au Règlement Général sur la Protection des Données, tu disposes d'un droit d'accès, de rectification, d'opposition et de suppression de tes données. Pour exercer ces droits, contacte-nous à [email de contact].
+Conformément au Règlement Général sur la Protection des Données, tu disposes d'un droit d'accès, de rectification, d'opposition et de suppression de tes données. Pour exercer ces droits, contacte-nous à exion.agentia@gmail.com.
 
 6. COOKIES
 L'application peut utiliser des cookies ou équivalents techniques nécessaires à son fonctionnement (session, préférences).`;
 
 function VueLegale({ page, onBack }) {
   const [ouvert, setOuvert] = useState(null);
-  const TITRES = { faq: "FAQ", mentions: "Mentions légales", cgu: "CGU", confidentialite: "Politique de confidentialité" };
+  const TITRES = { faq: "FAQ", mentions: "Mentions légales", cgu: "CGU", confidentialite: "Politique de confidentialité", contact: "Contact" };
   return (
     <div>
       <BackHeader title={TITRES[page] || "Informations"} onBack={onBack} />
@@ -2453,6 +2453,17 @@ function VueLegale({ page, onBack }) {
               );
             })}
           </div>
+        ) : page === "contact" ? (
+          <div className="rounded-2xl p-5 exion-fade text-center" style={{ background: C.bgSoft, border: "1px solid #2A3A5C" }}>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: C.gradientSoft }}>
+              <MessageCircle size={20} color="#8B5CF6" />
+            </div>
+ <p className="mb-1 font-semibold" style={{ fontSize: "14px", color: C.onDark, ...font }}>Une question, une remarque ?</p>
+ <p className="mb-4" style={{ fontSize: "12.5px", color: C.onDarkMuted, lineHeight: "1.5", ...font }}>Écris-nous directement, on te répond au plus vite.</p>
+            <a href="mailto:exion.agentia@gmail.com" className="inline-block px-5 py-3 rounded-full font-bold exion-press" style={{ fontSize: "13.5px", color: "#fff", background: C.gradient, ...font }}>
+              exion.agentia@gmail.com
+            </a>
+          </div>
         ) : (
           <div className="rounded-2xl p-4 exion-fade" style={{ background: C.bgSoft, border: "1px solid #2A3A5C" }}>
             <p style={{ fontSize: "12.5px", lineHeight: "1.7", color: C.onDarkMuted, whiteSpace: "pre-line", ...font }}>
@@ -2460,7 +2471,7 @@ function VueLegale({ page, onBack }) {
             </p>
           </div>
         )}
-        {page !== "faq" && (
+        {["mentions", "cgu", "confidentialite"].includes(page) && (
           <div className="rounded-2xl p-4 mt-4 exion-fade flex items-start gap-2.5" style={{ background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.3)" }}>
             <AlertTriangle size={16} color="#F59E0B" className="shrink-0 mt-0.5" />
  <p style={{ fontSize: "12px", lineHeight: "1.5", color: "#FDE68A", ...font }}>Texte générique à personnaliser (informations entre crochets) avant publication officielle.</p>
@@ -2474,6 +2485,7 @@ function VueLegale({ page, onBack }) {
 function LiensLegaux({ onOuvrirLegal }) {
   const items = [
     { id: "faq", label: "FAQ", icon: HelpCircle },
+    { id: "contact", label: "Contact", icon: MessageCircle },
     { id: "mentions", label: "Mentions légales", icon: FileText },
     { id: "cgu", label: "Conditions générales d'utilisation", icon: FileText },
     { id: "confidentialite", label: "Politique de confidentialité", icon: Lock },
