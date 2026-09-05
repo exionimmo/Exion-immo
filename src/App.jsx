@@ -2503,11 +2503,14 @@ function LiensLegaux({ onOuvrirLegal }) {
   );
 }
 
-function VueProfil({ profil, onSave, onLogin, onLogout, nbProjets, onVoirPro, onOuvrirLegal }) {
+function VueProfil({ profil, onSave, onRequestCode, onVerifyCode, onLogout, onDelete, nbProjets, onVoirPro, onOuvrirLegal }) {
   const [mode, setMode] = useState("creation"); // "creation" | "connexion"
   const [nom, setNom] = useState("");
   const [email, setEmail] = useState("");
   const [accepteCGU, setAccepteCGU] = useState(false);
+  const [codeEnvoye, setCodeEnvoye] = useState(false);
+  const [code, setCode] = useState("");
+  const [chargementCode, setChargementCode] = useState(false);
   const [erreur, setErreur] = useState("");
   const [debugInfo, setDebugInfo] = useState("");
   const [chargement, setChargement] = useState(false);
@@ -2586,8 +2589,19 @@ function VueProfil({ profil, onSave, onLogin, onLogout, nbProjets, onVoirPro, on
  <p style={{ fontSize: '12px', lineHeight: '1.5', color: "#D8D4F0", ...font }}>Tes analyses, simulations et checklist sont liées à ton compte et sauvegardées automatiquement.</p>
         </div>
 
-        <button onClick={onLogout} className="w-full text-center py-3 rounded-2xl font-semibold exion-press" style={{ fontSize: '14px', background: "rgba(239,68,68,0.12)", color: "#F87171", border: "1px solid rgba(239,68,68,0.3)", ...font }}>
+        <button onClick={onLogout} className="w-full text-center py-3 rounded-2xl font-semibold exion-press mb-2.5" style={{ fontSize: '14px', background: "rgba(239,68,68,0.12)", color: "#F87171", border: "1px solid rgba(239,68,68,0.3)", ...font }}>
           Se déconnecter
+        </button>
+        <button
+          onClick={() => {
+            if (window.confirm("Supprimer définitivement ton compte et toutes tes données (analyses, simulations, checklist) ? Cette action est irréversible.")) {
+              onDelete();
+            }
+          }}
+          className="w-full text-center py-3 rounded-2xl font-semibold exion-press"
+          style={{ fontSize: '13px', background: "transparent", color: "#6B7688", border: "1px solid #2A3A5C", ...font }}
+        >
+          Supprimer mon compte
         </button>
         <LiensLegaux onOuvrirLegal={onOuvrirLegal} />
       </div>
@@ -2659,15 +2673,16 @@ function VueProfil({ profil, onSave, onLogin, onLogout, nbProjets, onVoirPro, on
         >
           Créer mon compte
         </button>
-      ) : (
+      ) : !codeEnvoye ? (
         <button
-          disabled={chargement}
+          disabled={chargementCode}
           onClick={async () => {
             if (!email.trim()) { setErreur("Renseigne l'email de ton compte."); return; }
-            setErreur(""); setDebugInfo(""); setChargement(true);
-            const res = await onLogin(email.trim());
-            setChargement(false);
-            if (!res.ok) {
+            setErreur(""); setDebugInfo(""); setChargementCode(true);
+            const res = await onRequestCode(email.trim());
+            setChargementCode(false);
+            if (res.ok) { setCodeEnvoye(true); }
+            else {
               const estErreurReseau = (res.debug || []).some((d) => /erreur réseau/i.test(d));
               setErreur(estErreurReseau
                 ? "Impossible de contacter le serveur pour le moment. Vérifie ta connexion et réessaie."
@@ -2678,11 +2693,49 @@ function VueProfil({ profil, onSave, onLogin, onLogout, nbProjets, onVoirPro, on
           className="w-full text-center py-3.5 rounded-2xl font-bold exion-press mb-3 disabled:opacity-60"
           style={{ fontSize: '15px', color: "#fff", background: C.gradient, ...font }}
         >
-          {chargement ? "Connexion…" : "Se connecter"}
+          {chargementCode ? "Envoi…" : "Recevoir un code de connexion"}
         </button>
+      ) : (
+        <div className="mb-3">
+ <p className="mb-3 text-center" style={{ fontSize: '12.5px', color: C.onDarkMuted, lineHeight: '1.4', ...font }}>Un code à 6 chiffres a été envoyé à <strong style={{ color: C.onDark }}>{email.trim()}</strong>. Il expire dans quelques minutes.</p>
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            type="text" inputMode="numeric" placeholder="123456" maxLength={6}
+            style={{ ...inputBase, fontSize: '20px', textAlign: "center", letterSpacing: "0.3em" }}
+            className="w-full px-4 py-3.5 rounded-2xl outline-none mb-3"
+          />
+          <button
+            disabled={chargement}
+            onClick={async () => {
+              if (code.trim().length !== 6) { setErreur("Le code doit contenir 6 chiffres."); return; }
+              setErreur(""); setDebugInfo(""); setChargement(true);
+              const res = await onVerifyCode(email.trim(), code.trim());
+              setChargement(false);
+              if (!res.ok) {
+                const estErreurReseau = (res.debug || []).some((d) => /erreur réseau/i.test(d));
+                setErreur(estErreurReseau
+                  ? "Impossible de contacter le serveur pour le moment. Vérifie ta connexion et réessaie."
+                  : "Code invalide ou expiré. Vérifie le code reçu ou demandes-en un nouveau.");
+                setDebugInfo((res.debug || []).join(" · "));
+              }
+            }}
+            className="w-full text-center py-3.5 rounded-2xl font-bold exion-press mb-2.5 disabled:opacity-60"
+            style={{ fontSize: '15px', color: "#fff", background: C.gradient, ...font }}
+          >
+            {chargement ? "Vérification…" : "Valider le code"}
+          </button>
+          <button
+            onClick={() => { setCodeEnvoye(false); setCode(""); setErreur(""); }}
+            className="w-full text-center py-2 exion-press"
+            style={{ fontSize: '12.5px', color: C.onDarkMuted, textDecoration: "underline", ...font }}
+          >
+            Changer d'email ou renvoyer un code
+          </button>
+        </div>
       )}
  {debugInfo && <p className="mb-2" style={{ fontSize: '10px', fontFamily: "monospace", color: "#6B7688", lineHeight: '1.5' }}>{debugInfo}</p>}
- <p className="text-center" style={{ fontSize: '11px', color: C.onDarkMuted, lineHeight: '1.4', ...font }}>Aucun mot de passe requis pour l'instant — tes données restent stockées sur cet appareil.</p>
+ <p className="text-center" style={{ fontSize: '11px', color: C.onDarkMuted, lineHeight: '1.4', ...font }}>Connexion sécurisée par code à usage unique envoyé par email — aucun mot de passe à retenir.</p>
       <LiensLegaux onOuvrirLegal={onOuvrirLegal} />
     </div>
   );
@@ -2706,6 +2759,9 @@ const ACCOUNT_API_SIGNUP = "https://primary-production-a6e13.up.railway.app/webh
 const ACCOUNT_API_LOGIN = "https://primary-production-a6e13.up.railway.app/webhook/exion-login";
 const ACCOUNT_API_CHECKOUT = "https://primary-production-a6e13.up.railway.app/webhook/exion-checkout";
 const ACCOUNT_API_PORTAL = "https://primary-production-a6e13.up.railway.app/webhook/exion-portal";
+const ACCOUNT_API_DELETE = "https://primary-production-a6e13.up.railway.app/webhook/exion-delete-compte";
+const ACCOUNT_API_REQUEST_CODE = "https://primary-production-a6e13.up.railway.app/webhook/exion-request-code";
+const ACCOUNT_API_VERIFY_CODE = "https://primary-production-a6e13.up.railway.app/webhook/exion-verify-code";
 const CHAT_LIMIT_INVITE = 3;
 const CHAT_LIMIT_MEMBRE = 15;
 const FREE_ANALYSES_PAR_MOIS = 1;
@@ -3005,13 +3061,29 @@ export default function App() {
     } catch (e) { console.error("Exion: échec création compte serveur", e); }
   }
 
-  async function connecter(email) {
+  async function demanderCode(email) {
     const emailNorm = email.trim().toLowerCase();
     try {
-      const res = await fetch(ACCOUNT_API_LOGIN, {
+      const res = await fetch(ACCOUNT_API_REQUEST_CODE, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: emailNorm }),
+      });
+      const data = await res.json();
+      if (data.ok) return { ok: true, debug: [] };
+      return { ok: false, debug: [] };
+    } catch (e) {
+      return { ok: false, debug: [`Erreur réseau — ${e?.message || e}`] };
+    }
+  }
+
+  async function verifierCode(email, code) {
+    const emailNorm = email.trim().toLowerCase();
+    try {
+      const res = await fetch(ACCOUNT_API_VERIFY_CODE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailNorm, code }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -3026,10 +3098,27 @@ export default function App() {
     }
   }
 
+  async function rafraichirStatut(email) {
+    const emailNorm = email.trim().toLowerCase();
+    try {
+      const res = await fetch(ACCOUNT_API_LOGIN, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailNorm }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        const trouve = { nom: data.nom, email: data.email, plan: data.plan || "free" };
+        setProfil(trouve);
+        try { localStorage.setItem("session", JSON.stringify(trouve)); } catch (e) {}
+      }
+    } catch (e) { console.error("Exion: échec rafraîchissement statut", e); }
+  }
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("pro") === "success" && profil?.email) {
-      connecter(profil.email);
+      rafraichirStatut(profil.email);
       params.delete("pro");
       const clean = window.location.pathname + (params.toString() ? `?${params}` : "");
       window.history.replaceState({}, "", clean);
@@ -3039,6 +3128,23 @@ export default function App() {
   function deconnecter() {
     setProfil(null);
     try { localStorage.removeItem("session"); } catch (e) {}
+  }
+
+  async function supprimerCompte() {
+    const email = profil?.email;
+    try {
+      await fetch(ACCOUNT_API_DELETE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+    } catch (e) { console.error("Exion: échec suppression compte serveur", e); }
+    ["session", "analyses", "credit-sim", "bien-sim", "travaux-sim", "chat-usage", "chat-messages", "checklist"].forEach((k) => {
+      try { localStorage.removeItem(k); } catch (e) {}
+    });
+    setProfil(null);
+    setProjets([]);
+    setVue("accueil");
   }
 
   useEffect(() => {
@@ -3144,7 +3250,7 @@ export default function App() {
         {vue === "formulaire" && <VueFormulaire onCalculer={lancerAnalyse} chargement={chargement} onBack={() => setVue("accueil")} credit={credit} setCredit={updateCredit} bien={bien} setBien={updateBien} travaux={travaux} setTravaux={updateTravaux} />}
         {vue === "resultat" && <VueResultat r={resultat} onDiscuter={() => setChatOuvert(true)} onBack={() => setVue("accueil")} />}
         {vue === "projets" && <VueProjets projets={projets} onNouveau={() => setVue("formulaire")} onOuvrir={(p) => { setResultat(p); setVue("resultat"); }} onSupprimer={supprimerProjet} />}
-        {vue === "profil" && <VueProfil profil={profil} onSave={creerCompte} onLogin={connecter} onLogout={deconnecter} nbProjets={projets.length} onVoirPro={() => { setRaisonPro(""); setVue("pro"); }} onOuvrirLegal={(p) => { setPageLegale(p); setVue("legal"); }} />}
+        {vue === "profil" && <VueProfil profil={profil} onSave={creerCompte} onRequestCode={demanderCode} onVerifyCode={verifierCode} onLogout={deconnecter} onDelete={supprimerCompte} nbProjets={projets.length} onVoirPro={() => { setRaisonPro(""); setVue("pro"); }} onOuvrirLegal={(p) => { setPageLegale(p); setVue("legal"); }} />}
         {vue === "legal" && <VueLegale page={pageLegale} onBack={() => setVue("profil")} />}
 
         {chatOuvert && <ChatIA contexte={resultat} onClose={() => setChatOuvert(false)} profil={profil} onCreerCompte={() => { setChatOuvert(false); setVue("profil"); }} />}
