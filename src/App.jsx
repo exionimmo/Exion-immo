@@ -2162,12 +2162,13 @@ function VueResultat({ r, onDiscuter, onBack, onVoirDetail }) {
           <div className="flex items-center gap-1.5 mb-1.5">
             <Target size={14} color="#A855F7" />
             <span className="font-semibold uppercase tracking-wide" style={{ fontSize: "11.5px", color: "#C4B5FD", ...font }}>Prix/m² à ne pas dépasser</span>
-            <InfoTip text="Le prix au m² maximum pour que ce bien reste au moins à cash-flow neutre (0€/mois), à loyer, apport, taux et durée de prêt identiques. Au-delà, le projet te coûte de l'argent chaque mois." />
+            <InfoTip text="Le prix au m² maximum pour que ce bien reste au moins à cash-flow neutre (0€/mois), à loyer, apport, taux et durée de prêt identiques. Ce chiffre n'a pas de lien direct avec le prix du marché : une durée de prêt courte, par exemple, peut le rendre bien plus bas que le prix de marché même sur un bon secteur. Au-delà, le projet te coûte de l'argent chaque mois." />
           </div>
           <div className="flex items-end justify-between">
             <div>
               <div className="font-extrabold leading-none" style={{ fontSize: "26px", color: "#fff", ...font }}>{fmt(r.prixM2MaxRentable)}<span style={{ fontSize: "14px", color: C.onDarkMuted }}>/m²</span></div>
  <div className="mt-1" style={{ fontSize: "11.5px", color: C.onDarkMuted, ...font }}>soit {fmt(r.prixMaxRentable)} au total</div>
+ <div className="mt-0.5" style={{ fontSize: "10.5px", color: C.onDarkMuted, opacity: 0.75, ...font }}>Hypothèses : prêt sur {r.duree} ans à {r.taux}%</div>
             </div>
             <span className="font-semibold px-2.5 py-1 rounded-full text-right" style={{ fontSize: "11px", background: r.prixM2Annonce > r.prixM2MaxRentable ? "rgba(239,68,68,0.16)" : "rgba(34,197,94,0.16)", color: r.prixM2Annonce > r.prixM2MaxRentable ? "#F87171" : C.green, ...font }}>
               {r.prixM2Annonce > r.prixM2MaxRentable ? `${fmt(r.prixM2Annonce - r.prixM2MaxRentable)}/m² de trop` : "Prix actuel dans le budget ✓"}
