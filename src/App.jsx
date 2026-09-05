@@ -535,14 +535,9 @@ function VueAccueil({ projets, onNouveau, onOuvrir, onSupprimer, onOutil, onVoir
     <div className="px-5 pb-24 pt-4">
       <div className="flex items-center justify-between mb-3 exion-fade">
         <div className="flex items-center gap-2.5">
-          <Menu size={20} color={C.onDark} />
           <img src={LOGO_IMG} alt="Exion Immo" style={{ height: "22px", width: "auto" }} />
         </div>
         <div className="flex items-center gap-3">
-          <button className="relative" aria-label="Notifications">
-            <Bell size={19} color={C.onDark} />
- <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center font-bold" style={{ fontSize: '9px', background: "#EF4444", color: "#fff" }}>3</span>
-          </button>
           <button onClick={onProfil} aria-label="Profil" className="relative w-9 h-9 rounded-full flex items-center justify-center exion-press" style={{ background: C.gradient }}>
             {initiales ? (
  <span className="font-bold" style={{ fontSize: '12px', color: "#fff", ...font }}>{initiales}</span>
