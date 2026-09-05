@@ -447,45 +447,58 @@ const VERDICT_DOT = {
   "À approfondir": "#9CA3AF",
 };
 
-function ProjectCard({ p, onOpen }) {
+function ProjectCard({ p, onOpen, onSupprimer }) {
   const dotColor = VERDICT_DOT[p.verdict] || VERDICT_DOT["À approfondir"];
   const progress = Math.round(p.scoreGlobal || 0);
+  function handleSupprimer(e) {
+    e.stopPropagation();
+    if (window.confirm("Supprimer cette analyse ? Cette action est définitive.")) {
+      onSupprimer(p.id);
+    }
+  }
   return (
-    <button onClick={() => onOpen(p)} className="w-full text-left exion-fade exion-press">
+    <div className="w-full text-left exion-fade">
       <div className="p-3.5 rounded-[22px]" style={{ background: C.bgSoft, border: "1px solid #2A3A5C" }}>
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: C.gradientSoft }}>
-            <HomeIcon size={20} color="#8B5CF6" />
-          </div>
-          <div className="min-w-0 flex-1">
- <div className="font-semibold truncate" style={{ fontSize: '14px', color: C.onDark, ...font }}>{p.typeBien} · {p.ville} ({p.codePostal})</div>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dotColor }} />
- <span style={{ fontSize: '11.5px', color: C.onDarkMuted, ...font }}>{p.verdict}</span>
+        <button onClick={() => onOpen(p)} className="w-full text-left exion-press">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: C.gradientSoft }}>
+              <HomeIcon size={20} color="#8B5CF6" />
             </div>
+            <div className="min-w-0 flex-1">
+ <div className="font-semibold truncate" style={{ fontSize: '14px', color: C.onDark, ...font }}>{p.typeBien} · {p.ville} ({p.codePostal})</div>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dotColor }} />
+ <span style={{ fontSize: '11.5px', color: C.onDarkMuted, ...font }}>{p.verdict}</span>
+              </div>
+            </div>
+            <ChevronRight size={18} color={C.onDarkMuted} className="shrink-0" />
           </div>
-          <ChevronRight size={18} color={C.onDarkMuted} className="shrink-0" />
-        </div>
-        <div className="flex items-center justify-between pt-2.5" style={{ borderTop: "1px solid #22304C" }}>
-          <div>
+          <div className="flex items-center justify-between pt-2.5" style={{ borderTop: "1px solid #22304C" }}>
+            <div>
  <div style={{ fontSize: '10.5px', color: C.onDarkMuted, ...font }}>Rentabilité nette</div>
  <div className="font-bold" style={{ fontSize: '14px', color: C.green, ...font }}>{(p.rentabiliteNette ?? 0).toFixed(1).replace(".", ",")}%</div>
-          </div>
-          <div>
+            </div>
+            <div>
  <div style={{ fontSize: '10.5px', color: C.onDarkMuted, ...font }}>Cash-flow / mois</div>
  <div className="font-bold" style={{ fontSize: '14px', color: p.cashFlowMensuel >= 0 ? C.green : C.red, ...font }}>{p.cashFlowMensuel >= 0 ? "+" : ""}{fmt(p.cashFlowMensuel)}</div>
-          </div>
-          <div>
+            </div>
+            <div>
  <div className="text-center mb-1" style={{ fontSize: '10.5px', color: C.onDarkMuted, ...font }}>Progression</div>
-            <CircularProgress percent={progress} color="#8B5CF6" size={38} />
+              <CircularProgress percent={progress} color="#8B5CF6" size={38} />
+            </div>
           </div>
-        </div>
+        </button>
+        {onSupprimer && (
+          <button onClick={handleSupprimer} className="w-full mt-2.5 pt-2.5 flex items-center justify-center gap-1.5 exion-press" style={{ borderTop: "1px solid #22304C", fontSize: "12px", color: C.red, ...font }}>
+            <X size={13} /> Supprimer
+          </button>
+        )}
       </div>
-    </button>
+    </div>
   );
 }
 
-function VueProjets({ projets, onNouveau, onOuvrir }) {
+function VueProjets({ projets, onNouveau, onOuvrir, onSupprimer }) {
   return (
     <div className="px-5 pt-6 pb-28">
       <div className="flex items-center justify-between mb-5 exion-fade">
@@ -508,7 +521,7 @@ function VueProjets({ projets, onNouveau, onOuvrir }) {
         </div>
       ) : (
         <div className="space-y-3">
-          {projets.map((p) => <ProjectCard key={p.id} p={p} onOpen={onOuvrir} />)}
+          {projets.map((p) => <ProjectCard key={p.id} p={p} onOpen={onOuvrir} onSupprimer={onSupprimer} />)}
         </div>
       )}
     </div>
@@ -516,7 +529,7 @@ function VueProjets({ projets, onNouveau, onOuvrir }) {
 }
 
 
-function VueAccueil({ projets, onNouveau, onOuvrir, onOutil, onVoirBiens, onVoirOutils, onProfil, profil }) {
+function VueAccueil({ projets, onNouveau, onOuvrir, onSupprimer, onOutil, onVoirBiens, onVoirOutils, onProfil, profil }) {
   const initiales = profil?.nom ? profil.nom.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase() : null;
   return (
     <div className="px-5 pb-24 pt-4">
@@ -607,7 +620,7 @@ function VueAccueil({ projets, onNouveau, onOuvrir, onOutil, onVoirBiens, onVoir
         </div>
       ) : (
         <div className="space-y-3">
-          {projets.map((p) => <ProjectCard key={p.id} p={p} onOpen={onOuvrir} />)}
+          {projets.map((p) => <ProjectCard key={p.id} p={p} onOpen={onOuvrir} onSupprimer={onSupprimer} />)}
         </div>
       )}
     </div>
@@ -2797,6 +2810,14 @@ export default function App() {
   const [bulleOffset, setBulleOffset] = useState({ x: 0, y: 0 });
   const dragRef = useRef({ dragging: false, startX: 0, startY: 0, origX: 0, origY: 0, moved: false });
 
+  function supprimerProjet(id) {
+    setProjets((liste) => {
+      const next = liste.filter((p) => p.id !== id);
+      try { localStorage.setItem("analyses", JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  }
+
   function bulleDown(e) {
     e.currentTarget.setPointerCapture?.(e.pointerId);
     dragRef.current = { dragging: true, startX: e.clientX, startY: e.clientY, origX: bulleOffset.x, origY: bulleOffset.y, moved: false };
@@ -2963,7 +2984,7 @@ export default function App() {
   return (
     <div className="min-h-screen w-full" style={{ background: "radial-gradient(circle at 50% 0%, #2A2470 0%, #14133A 45%, #100F2C 100%)" }}>
       <div className="max-w-md mx-auto min-h-screen relative overflow-x-hidden" style={{ background: "transparent" }}>
-        {vue === "accueil" && <VueAccueil projets={projets} onNouveau={onNouveauAnalyse} onOuvrir={(p) => { setResultat(p); setVue("resultat"); }} onOutil={ouvrirOutil} onVoirBiens={onVoirBiensGate} onVoirOutils={() => setVue("outils")} onProfil={() => setVue("profil")} profil={profil} />}
+        {vue === "accueil" && <VueAccueil projets={projets} onNouveau={onNouveauAnalyse} onOuvrir={(p) => { setResultat(p); setVue("resultat"); }} onSupprimer={supprimerProjet} onOutil={ouvrirOutil} onVoirBiens={onVoirBiensGate} onVoirOutils={() => setVue("outils")} onProfil={() => setVue("profil")} profil={profil} />}
         {vue === "biens" && <VueBiens onBack={() => setVue("accueil")} onNouveau={onNouveauAnalyse} />}
         {vue === "pro" && <EcranPro onBack={() => setVue("accueil")} raison={raisonPro} profil={profil} onDemandeCompte={() => setVue("profil")} />}
         {vue === "outils" && <VueOutils onBack={() => setVue("accueil")} onOutil={ouvrirOutil} />}
@@ -2975,7 +2996,7 @@ export default function App() {
         {vue === "calculateur" && <VueCalculateur onBack={() => setVue("accueil")} onVoirAnalyse={() => setVue("formulaire")} onOuvrirCredit={() => setVue("credit")} credit={credit} bien={bien} setBien={updateBien} />}
         {vue === "formulaire" && <VueFormulaire onCalculer={lancerAnalyse} chargement={chargement} onBack={() => setVue("accueil")} credit={credit} setCredit={updateCredit} bien={bien} setBien={updateBien} travaux={travaux} setTravaux={updateTravaux} />}
         {vue === "resultat" && <VueResultat r={resultat} onDiscuter={() => setChatOuvert(true)} onBack={() => setVue("accueil")} />}
-        {vue === "projets" && <VueProjets projets={projets} onNouveau={() => setVue("formulaire")} onOuvrir={(p) => { setResultat(p); setVue("resultat"); }} />}
+        {vue === "projets" && <VueProjets projets={projets} onNouveau={() => setVue("formulaire")} onOuvrir={(p) => { setResultat(p); setVue("resultat"); }} onSupprimer={supprimerProjet} />}
         {vue === "profil" && <VueProfil profil={profil} onSave={creerCompte} onLogin={connecter} onLogout={deconnecter} nbProjets={projets.length} onVoirPro={() => { setRaisonPro(""); setVue("pro"); }} />}
 
         {chatOuvert && <ChatIA contexte={resultat} onClose={() => setChatOuvert(false)} profil={profil} onCreerCompte={() => { setChatOuvert(false); setVue("profil"); }} />}
