@@ -2060,8 +2060,8 @@ function InfoTip({ text }) {
       </button>
       {ouvert && (
         <>
-          <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setOuvert(false); }} />
-          <div className="exion-pop fixed z-20 p-3 rounded-2xl" style={{ ...style, background: "#0E1130", border: "1px solid #3A3D6B", boxShadow: "0 10px 28px rgba(0,0,0,0.4)" }}>
+          <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={(e) => { e.stopPropagation(); setOuvert(false); }} />
+          <div className="exion-pop fixed p-3 rounded-2xl" style={{ ...style, zIndex: 9999, background: "#0E1130", border: "1px solid #3A3D6B", boxShadow: "0 10px 28px rgba(0,0,0,0.4)" }}>
             <p style={{ fontSize: "11.5px", lineHeight: "1.5", color: C.onDark, ...font }}>{text}</p>
           </div>
         </>
