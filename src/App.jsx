@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   Home as HomeIcon, Building2, LayoutGrid, ClipboardList, User, Plus, ArrowLeft,
   MessageCircle, X, Send, Loader2, Calculator, Landmark, Hammer, ListChecks,
@@ -2058,13 +2059,14 @@ function InfoTip({ text }) {
       <button ref={btnRef} onClick={(e) => { e.stopPropagation(); setOuvert((v) => !v); }} className="flex items-center justify-center" style={{ width: 16, height: 16 }} aria-label="Explication">
         <Info size={13} color={C.onDarkMuted} />
       </button>
-      {ouvert && (
+      {ouvert && createPortal(
         <>
-          <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={(e) => { e.stopPropagation(); setOuvert(false); }} />
-          <div className="exion-pop fixed p-3 rounded-2xl" style={{ ...style, zIndex: 9999, background: "#0E1130", border: "1px solid #3A3D6B", boxShadow: "0 10px 28px rgba(0,0,0,0.4)" }}>
+          <div className="fixed inset-0" style={{ zIndex: 999998 }} onClick={(e) => { e.stopPropagation(); setOuvert(false); }} />
+          <div className="exion-pop fixed p-3 rounded-2xl" style={{ ...style, zIndex: 999999, background: "#0E1130", border: "1px solid #3A3D6B", boxShadow: "0 10px 28px rgba(0,0,0,0.4)" }}>
             <p style={{ fontSize: "11.5px", lineHeight: "1.5", color: C.onDark, ...font }}>{text}</p>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </span>
   );
