@@ -2473,12 +2473,6 @@ function VueLegale({ page, onBack }) {
             </p>
           </div>
         )}
-        {["cgu", "confidentialite"].includes(page) && (
-          <div className="rounded-2xl p-4 mt-4 exion-fade flex items-start gap-2.5" style={{ background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.3)" }}>
-            <AlertTriangle size={16} color="#F59E0B" className="shrink-0 mt-0.5" />
- <p style={{ fontSize: "12px", lineHeight: "1.5", color: "#FDE68A", ...font }}>Texte générique à personnaliser (informations entre crochets) avant publication officielle.</p>
-          </div>
-        )}
       </div>
     </div>
   );
