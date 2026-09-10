@@ -2371,7 +2371,7 @@ const FAQ_APP = [
   { q: "Les résultats remplacent-ils l'avis d'un professionnel ?", a: "Non. Exion Immo t'aide à dégrossir un dossier rapidement, mais pour toute décision engageante (offre, prêt, signature), il est indispensable de consulter un notaire, un courtier ou un conseiller." },
   { q: "Mes analyses sont-elles sauvegardées si je change de téléphone ?", a: "Tes analyses, ton profil et tes simulations sont stockés sur l'appareil que tu utilises. Si tu changes de téléphone ou de navigateur, tu ne les retrouveras pas automatiquement." },
   { q: "Comment fonctionne l'abonnement Pro ?", a: "Le plan Pro débloque des fonctionnalités avancées. Tu peux gérer ou résilier ton abonnement à tout moment depuis l'onglet Profil, via le bouton \"Gérer mon abonnement\"." },
-  { q: "Le chat IA a-t-il une limite de questions ?", a: "Oui : 3 questions par jour pour un visiteur, 15 pour un compte enregistré. Le compteur se réinitialise chaque jour." },
+  { q: "Le chat IA a-t-il une limite de questions ?", a: "Oui : 3 questions par jour en plan gratuit, 15 par jour en plan Pro. Le compteur se réinitialise chaque jour." },
   { q: "Comment supprimer mon compte ou mes données ?", a: "Contacte-nous à exion.agentia@gmail.com en précisant l'adresse email de ton compte : nous supprimons tes données sous [délai] jours ouvrés." },
   { q: "D'où viennent les prix de marché affichés ?", a: "Des bases de données publiques (DVF) quand elles couvrent la commune, sinon d'une estimation par IA calibrée sur des données de marché récentes." },
 ];
@@ -2758,9 +2758,10 @@ const ACCOUNT_API_PORTAL = "https://primary-production-a6e13.up.railway.app/webh
 const ACCOUNT_API_DELETE = "https://primary-production-a6e13.up.railway.app/webhook/exion-delete-compte";
 const ACCOUNT_API_REQUEST_CODE = "https://primary-production-a6e13.up.railway.app/webhook/exion-request-code";
 const ACCOUNT_API_VERIFY_CODE = "https://primary-production-a6e13.up.railway.app/webhook/exion-verify-code";
-const CHAT_LIMIT_INVITE = 3;
-const CHAT_LIMIT_MEMBRE = 15;
+const CHAT_LIMIT_FREE = 3;
+const CHAT_LIMIT_PRO = 15;
 const FREE_ANALYSES_PAR_MOIS = 1;
+const OUTILS_GRATUITS = ["calculateur", "checklist"];
 
 function estPro(profil) {
   return profil?.plan === "pro";
@@ -2792,7 +2793,7 @@ function EcranPro({ onBack, raison, profil, onDemandeCompte }) {
     "Export PDF de tes analyses",
     "Annuaire VueBiens complet",
     "Simulateur de crédit avancé",
-    "Chat IA sans limite de messages",
+    "Chat IA — 15 questions par jour",
     "Lexique complet (23 entrées)",
   ];
 
@@ -2847,7 +2848,7 @@ function EcranPro({ onBack, raison, profil, onDemandeCompte }) {
 }
 
 function ChatIA({ contexte, onClose, profil, onCreerCompte }) {
-  const limite = profil?.nom ? CHAT_LIMIT_MEMBRE : CHAT_LIMIT_INVITE;
+  const limite = estPro(profil) ? CHAT_LIMIT_PRO : CHAT_LIMIT_FREE;
   const [messages, setMessages] = useState(() => {
     try {
       const raw = localStorage.getItem("chat-messages");
@@ -3200,6 +3201,16 @@ export default function App() {
   }
 
   function ouvrirOutil(id) {
+    if (!OUTILS_GRATUITS.includes(id) && !estPro(profil)) {
+      const raisons = {
+        credit: "La simulation de crédit est réservée au plan Pro.",
+        travaux: "L'estimation travaux est réservée au plan Pro.",
+        lexique: "Le lexique complet est réservé au plan Pro.",
+      };
+      setRaisonPro(raisons[id] || "Cet outil est réservé au plan Pro.");
+      setVue("pro");
+      return;
+    }
     if (id === "checklist") setVue("checklist");
     else if (id === "credit") setVue("credit");
     else if (id === "calculateur") setVue("calculateur");
