@@ -2792,7 +2792,7 @@ function EcranPro({ onBack, raison, profil, onDemandeCompte }) {
     "Analyses illimitées, tous les mois",
     "Export PDF de tes analyses",
     "Annuaire VueBiens complet",
-    "Simulateur de crédit avancé",
+    "Simulateur de crédit + Estimation travaux",
     "Chat IA — 15 questions par jour",
     "Lexique complet (23 entrées)",
   ];
