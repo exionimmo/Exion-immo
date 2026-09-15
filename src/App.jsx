@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { Analytics } from "@vercel/analytics/react";
 import {
   Home as HomeIcon, Building2, LayoutGrid, ClipboardList, User, Plus, ArrowLeft,
   MessageCircle, X, Send, Loader2, Calculator, Landmark, Hammer, ListChecks,
@@ -3304,6 +3305,7 @@ export default function App() {
           </div>
         )}
         {!chatOuvert && <NavBar vue={vue} setVue={setVue} />}
+      <Analytics />
       </div>
     </div>
   );
