@@ -3050,6 +3050,7 @@ export default function App() {
 
   async function creerCompte(data) {
     setProfil(data);
+    window.exionTrack?.("CompleteRegistration");
     try { localStorage.setItem("session", JSON.stringify(data)); } catch (e) {}
     try {
       await fetch(ACCOUNT_API_SIGNUP, {
