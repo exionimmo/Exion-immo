@@ -32,8 +32,11 @@ function chargerPixel() {
 
 // À appeler depuis l'app : window.exionTrack("CompleteRegistration")
 // N'envoie rien si le visiteur a refusé les cookies.
+// Événements standard Meta (PageView, ViewContent, CompleteRegistration…) ou personnalisés (AnalyseLancee…)
+const EVENEMENTS_STANDARD = ["PageView", "ViewContent", "CompleteRegistration", "Lead", "Search", "InitiateCheckout", "Purchase", "Subscribe", "StartTrial"];
 window.exionTrack = (evenement) => {
-  if (lireChoix() === "oui" && window.fbq) window.fbq("track", evenement);
+  if (lireChoix() !== "oui" || !window.fbq) return;
+  window.fbq(EVENEMENTS_STANDARD.includes(evenement) ? "track" : "trackCustom", evenement);
 };
 
 // Pour un futur lien "Gérer mes cookies" : window.exionCookies()

@@ -2121,7 +2121,7 @@ function analyseIA(r) {
   return phrases.join(" ");
 }
 
-function VueResultat({ r, onDiscuter, onBack, onVoirDetail }) {
+function VueResultat({ r, onDiscuter, onBack, onVoirDetail, verrouille, onDebloquer }) {
   const [detailOuvert, setDetailOuvert] = useState(false);
   const [voirEnrichissement, setVoirEnrichissement] = useState(false);
   const [voirCashflowDetail, setVoirCashflowDetail] = useState(false);
@@ -2242,6 +2242,7 @@ function VueResultat({ r, onDiscuter, onBack, onVoirDetail }) {
             info="Ce qu'il te reste (ou ce que tu sors de ta poche) chaque mois : loyer encaissé moins mensualité de crédit, charges, taxe foncière, provisions et impôts." />
         </div>
 
+        {verrouille ? <CarteVerrou onDebloquer={onDebloquer} /> : (<>
         <button onClick={() => setVoirCashflowDetail((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 rounded-2xl exion-press" style={{ background: "#1A1B42", border: "1px solid #2A3A5C" }}>
           <span className="flex items-center gap-2 font-semibold" style={{ fontSize: "13px", color: C.onDark, ...font }}><Calculator size={15} color="#8B5CF6" /> Voir le calcul du cash-flow</span>
           <ChevronRight size={16} color={C.onDarkMuted} style={{ transform: voirCashflowDetail ? "rotate(90deg)" : "none", transition: "transform 0.2s" }} />
@@ -2369,11 +2370,46 @@ function VueResultat({ r, onDiscuter, onBack, onVoirDetail }) {
           </div>
         )}
 
+        </>)}
+
         <button onClick={onDiscuter} className="w-full flex items-center justify-center gap-2 py-3.5 rounded-full font-semibold" style={{ fontSize: "14.5px", background: C.bgSoft, color: C.onDark, border: `1px solid #2A3A5C`, ...font }}>
           <MessageCircle size={18} /> Poser une question sur ce bien
         </button>
         <p className="text-center mt-1" style={{ fontSize: "11px", color: C.onDarkMuted, ...font }}>Estimations indicatives. À vérifier : devis réels, avis d'imposition, syndic, PLU.</p>
       </div>
+    </div>
+  );
+}
+
+// Carte affichée sous les chiffres clés tant que le visiteur n'a pas de compte
+function CarteVerrou({ onDebloquer }) {
+  const avantages = [
+    "Le calcul détaillé de ton cash-flow, ligne par ligne",
+    "Le résumé financier et le coût total du crédit",
+    "L'avis de l'IA sur ce bien",
+    "Prix vs marché, travaux, revente et enrichissement année par année",
+  ];
+  return (
+    <div className="rounded-[26px] p-5 exion-fade relative overflow-hidden" style={{ background: "linear-gradient(135deg, rgba(20,241,217,0.12), rgba(139,92,246,0.18))", border: "1px solid #3A3D6B" }}>
+      <div className="flex items-center gap-2 mb-1">
+        <Lock size={16} color="#C4B5FD" />
+        <span className="font-bold" style={{ fontSize: "15px", color: "#fff", ...font }}>Débloque l'analyse complète</span>
+      </div>
+      <p className="mb-3" style={{ fontSize: "12.5px", color: C.onDarkMuted, lineHeight: "1.45", ...font }}>
+        C'est gratuit. Ton analyse est aussi sauvegardée pour la retrouver plus tard.
+      </p>
+      <div className="space-y-2 mb-4">
+        {avantages.map((a) => (
+          <div key={a} className="flex items-start gap-2">
+            <Check size={15} color={C.green} strokeWidth={3} className="shrink-0 mt-0.5" />
+            <span style={{ fontSize: "13px", color: "#E5E7F5", lineHeight: "1.4", ...font }}>{a}</span>
+          </div>
+        ))}
+      </div>
+      <button onClick={() => { window.exionTrack?.("DeblocageClique"); onDebloquer(); }} className="w-full flex items-center justify-center gap-2 py-3.5 rounded-full font-bold text-white exion-press" style={{ fontSize: "14.5px", background: C.gradient, boxShadow: "0 8px 24px rgba(139,92,246,0.35)", ...font }}>
+        Créer mon compte gratuit <ChevronRight size={17} />
+      </button>
+      <p className="text-center mt-2" style={{ fontSize: "11.5px", color: C.onDarkMuted, ...font }}>10 secondes · nom + email · sans carte bancaire</p>
     </div>
   );
 }
@@ -3053,6 +3089,7 @@ export default function App() {
   const [bien, setBien] = useState({ prix: "0", notaire: "0", travaux: "0", loyer: "0", charges: "0", surface: "0" });
   const [travaux, setTravaux] = useState(() => ({ coche: cocheParDefaut(), tarifs: tarifsParDefaut(), nbMenuiseries: "0", prixMenuiserie: "0" }));
   const [profil, setProfil] = useState(null);
+  const [retourResultat, setRetourResultat] = useState(false);
 
   useEffect(() => {
     try {
@@ -3060,6 +3097,14 @@ export default function App() {
       if (raw) setProfil(JSON.parse(raw));
     } catch (e) {}
   }, []);
+
+  // Après inscription ou connexion depuis l'écran de résultat, on y revient directement
+  useEffect(() => {
+    if (retourResultat && profil?.email && resultat) {
+      setRetourResultat(false);
+      setVue("resultat");
+    }
+  }, [retourResultat, profil, resultat]);
 
   async function creerCompte(data) {
     setProfil(data);
@@ -3199,6 +3244,7 @@ export default function App() {
   }
 
   async function lancerAnalyse(f) {
+    window.exionTrack?.("AnalyseLancee");
     setChargement(true);
     const prixM2Marche = await fetchPrixMarche(f.ville, f.codePostal, f.typeBien === "Appartement");
     const estAppart = f.typeBien === "Appartement";
@@ -3217,6 +3263,7 @@ export default function App() {
     const prixM2MaxRentable = r.surface > 0 ? Math.round(prixMaxRentable / r.surface) : 0;
     const rFinal = { ...r, prixMaxRentable, prixM2MaxRentable };
     setResultat(rFinal); setChargement(false); setVue("resultat");
+    window.exionTrack?.("ViewContent");
     const nouveauProjet = { id: Date.now(), ...rFinal };
     const liste = [nouveauProjet, ...projets].slice(0, 20);
     setProjets(liste);
@@ -3285,7 +3332,7 @@ export default function App() {
         {vue === "travaux" && <VueTravaux onBack={() => setVue("accueil")} bien={bien} setBien={updateBien} travaux={travaux} setTravaux={updateTravaux} />}
         {vue === "calculateur" && <VueCalculateur onBack={() => setVue("accueil")} onVoirAnalyse={() => setVue("formulaire")} onOuvrirCredit={() => setVue("credit")} credit={credit} bien={bien} setBien={updateBien} />}
         {vue === "formulaire" && <VueFormulaire onCalculer={lancerAnalyse} chargement={chargement} onBack={() => setVue("accueil")} credit={credit} setCredit={updateCredit} bien={bien} setBien={updateBien} travaux={travaux} setTravaux={updateTravaux} />}
-        {vue === "resultat" && <VueResultat r={resultat} onDiscuter={() => setChatOuvert(true)} onBack={() => setVue("accueil")} />}
+        {vue === "resultat" && <VueResultat r={resultat} onDiscuter={() => setChatOuvert(true)} onBack={() => setVue("accueil")} verrouille={!profil?.email} onDebloquer={() => { setRetourResultat(true); setVue("profil"); }} />}
         {vue === "projets" && <VueProjets projets={projets} onNouveau={() => setVue("formulaire")} onOuvrir={(p) => { setResultat(p); setVue("resultat"); }} onSupprimer={supprimerProjet} />}
         {vue === "profil" && <VueProfil profil={profil} onSave={creerCompte} onRequestCode={demanderCode} onVerifyCode={verifierCode} onLogout={deconnecter} onDelete={supprimerCompte} nbProjets={projets.length} onVoirPro={() => { setRaisonPro(""); setVue("pro"); }} onOuvrirLegal={(p) => { setPageLegale(p); setVue("legal"); }} />}
         {vue === "legal" && <VueLegale page={pageLegale} onBack={() => setVue("profil")} />}
