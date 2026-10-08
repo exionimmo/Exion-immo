@@ -3169,14 +3169,17 @@ export default function App() {
         const trouve = { nom: data.nom, email: data.email, plan: data.plan || "free" };
         setProfil(trouve);
         try { localStorage.setItem("session", JSON.stringify(trouve)); } catch (e) {}
+        return trouve;
       }
     } catch (e) { console.error("Exion: échec rafraîchissement statut", e); }
+    return null;
   }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("pro") === "success" && profil?.email) {
-      rafraichirStatut(profil.email);
+      // Retour de Stripe : on prévient Meta qu'un abonnement Pro vient d'être pris
+      rafraichirStatut(profil.email).then((p) => { if (estPro(p)) window.exionTrack?.("Subscribe"); });
       params.delete("pro");
       const clean = window.location.pathname + (params.toString() ? `?${params}` : "");
       window.history.replaceState({}, "", clean);
