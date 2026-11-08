@@ -2248,10 +2248,10 @@ function VueFormulaire({ onCalculer, chargement, onBack, credit, setCredit, bien
             </p>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Revenus nets du foyer (€/mois)"><TextInput type="number" value={f.revenusFoyer} onChange={set("revenusFoyer")} placeholder="3200" /></Field>
-              <Field label="Crédits en cours (€/mois)"><TextInput type="number" value={f.creditsEnCours} onChange={set("creditsEnCours")} placeholder="0" /></Field>
+              <Field label={<span className="inline-flex items-center gap-1">Crédits en cours (€/mois) <InfoTip text="Toutes les mensualités que tu continueras à payer après l'achat : crédit voiture (ou LOA/LLD), crédit conso ou renouvelable, prêt étudiant, crédit d'un autre bien que tu gardes (locatif, résidence secondaire), pension alimentaire versée. Ne mets PAS : le crédit de ce bien (calculé automatiquement), le crédit d'un logement que tu revends pour acheter celui-ci, ni ton loyer actuel." /></span>}><TextInput type="number" value={f.creditsEnCours} onChange={set("creditsEnCours")} placeholder="0" /></Field>
             </div>
             <p className="-mt-2 mb-3" style={{ fontSize: "11.5px", color: C.textMuted, ...font }}>
-              Sert à calculer ton taux d'endettement et ce qu'il te reste pour vivre. Crédits en cours : voiture, conso, etc.
+              Sert à calculer ton taux d'endettement et ce qu'il te reste pour vivre. Crédits en cours : voiture, conso, prêt étudiant, autre bien que tu gardes… mais pas le crédit de ce bien, ni ton loyer actuel.
             </p>
             <Field label="Taxe foncière si tu la connais (€/an)"><TextInput type="number" value={f.taxeFonciereConnue} onChange={set("taxeFonciereConnue")} placeholder="Estimée automatiquement si vide" /></Field>
             {f.copropriete === "Oui" && (
