@@ -383,6 +383,9 @@ const LOUER_ACHETER_HYP = { revalorisation: 0.01, hausseLoyer: 0.015, rendementE
 function arrondirA(n, pas) { return Math.round(n / pas) * pas; }
 
 function verdictPrixRP(ecartPct) {
+  // Un prix très inférieur au marché (même travaux compris) cache souvent un défaut :
+  // on alerte au lieu de crier à la bonne affaire.
+  if (ecartPct <= -30) return "Très en dessous du marché";
   if (ecartPct <= -7) return "Bonne affaire";
   if (ecartPct <= 5) return "Prix correct";
   if (ecartPct <= 12) return "Un peu au-dessus du marché";
@@ -403,8 +406,6 @@ function calculerAchatRP(f, prixM2Marche, loyerM2Estime, sourceLoyer) {
   const ecartMarchePct = Math.round(((prixM2Annonce - prixM2Marche.valeur) / prixM2Marche.valeur) * 100);
   const ecartMarcheEuros = prixAnnonce - valeurMarche;
   const marcheFiable = prixM2Marche.source === "DVF";
-  // Sans ventes réelles, on ne peut pas juger le prix : on ne dit pas « bonne affaire ».
-  const verdict = marcheFiable ? verdictPrixRP(ecartMarchePct) : "Prix à vérifier";
   const passoire = ["F", "G"].includes(f.dpe);
   const baseNegociation = marcheFiable ? Math.min(prixAnnonce * 0.97, valeurMarche * (passoire ? 0.95 : 1)) : prixAnnonce * 0.97;
   const prixConseille = Math.max(arrondirA(baseNegociation, 1000), 0);
@@ -424,6 +425,13 @@ function calculerAchatRP(f, prixM2Marche, loyerM2Estime, sourceLoyer) {
     postes.forEach((p) => { const g = GRID_TRAVAUX[p]; travauxProbable += g.probable * (g.parM2 ? surface : 1); postesTravaux.push(g.label); });
     travauxProbable = Math.round(travauxProbable);
   }
+
+  // --- Verdict : on compare le coût du bien remis en état (prix + travaux) au marché ---
+  const prixM2AvecTravaux = Math.round((prixAnnonce + travauxProbable) / surface);
+  const ecartAvecTravauxPct = Math.round(((prixM2AvecTravaux - prixM2Marche.valeur) / prixM2Marche.valeur) * 100);
+  // Sans ventes réelles, on ne peut pas juger le prix : on ne dit pas « bonne affaire ».
+  const verdict = marcheFiable ? verdictPrixRP(ecartAvecTravauxPct) : "Prix à vérifier";
+  const prixTresBas = verdict === "Très en dessous du marché";
 
   // --- Frais d'achat et crédit ---
   const fraisNotaire = Math.round(prix * (estNeuf ? 0.025 : 0.08));
@@ -472,7 +480,7 @@ function calculerAchatRP(f, prixM2Marche, loyerM2Estime, sourceLoyer) {
 
   // --- Score acheteur ---
   const clamp = (n) => Math.max(0, Math.min(100, n));
-  const scorePrix = marcheFiable ? clamp(70 - ecartMarchePct * 2) : 50;
+  const scorePrix = !marcheFiable ? 50 : prixTresBas ? 60 : clamp(70 - ecartAvecTravauxPct * 2);
   const scoreDPE = ["A", "B", "C", "D"].includes(f.dpe) ? 80 : f.dpe === "E" ? 50 : passoire ? 20 : 50;
   const scoreTravaux = clamp(100 - (prix > 0 ? travauxProbable / prix : 0) * 100);
   const scoreBudget = tauxEndettement === null ? null : tauxEndettement <= 30 ? 100 : tauxEndettement <= 35 ? 75 : tauxEndettement <= 40 ? 35 : 10;
@@ -484,6 +492,7 @@ function calculerAchatRP(f, prixM2Marche, loyerM2Estime, sourceLoyer) {
     mode: "rp",
     prix, prixAnnonce, surface, ville: f.ville, codePostal: f.codePostal, typeBien: f.typeBien, dpe: f.dpe, estNeuf, estCopro,
     prixM2Annonce, prixM2Marche, valeurMarche, ecartMarchePct, ecartMarcheEuros, marcheFiable, verdict, passoire,
+    prixM2AvecTravaux, ecartAvecTravauxPct, prixTresBas,
     prixConseille, margeNegociation,
     postesTravaux, travauxProbable,
     fraisNotaire, fraisDossier, fraisGarantie, budgetTotal, apport, capitalEmprunte, creditAutorise,
@@ -643,6 +652,7 @@ const VERDICT_DOT = {
   "Prix correct": "#4ADE80",
   "Un peu au-dessus du marché": "#F59E0B",
   "Au-dessus du marché": "#EF4444",
+  "Très en dessous du marché": "#F59E0B",
   "Prix à vérifier": "#9CA3AF",
 };
 
@@ -677,7 +687,7 @@ function ProjectCard({ p, onOpen, onSupprimer }) {
           <div className="flex items-center justify-between pt-2.5" style={{ borderTop: "1px solid #22304C" }}>
             <div>
  <div style={{ fontSize: '10.5px', color: C.onDarkMuted, ...font }}>Écart au marché</div>
- <div className="font-bold" style={{ fontSize: '14px', color: !p.marcheFiable ? C.onDarkMuted : p.ecartMarchePct <= 5 ? C.green : C.red, ...font }}>{!p.marcheFiable ? "—" : `${p.ecartMarchePct > 0 ? "+" : ""}${p.ecartMarchePct}%`}</div>
+ <div className="font-bold" style={{ fontSize: '14px', color: !p.marcheFiable ? C.onDarkMuted : p.prixTresBas ? "#F59E0B" : (p.ecartAvecTravauxPct ?? p.ecartMarchePct) <= 5 ? C.green : C.red, ...font }}>{!p.marcheFiable ? "—" : `${(p.ecartAvecTravauxPct ?? p.ecartMarchePct) > 0 ? "+" : ""}${p.ecartAvecTravauxPct ?? p.ecartMarchePct}%`}</div>
             </div>
             <div>
  <div style={{ fontSize: '10.5px', color: C.onDarkMuted, ...font }}>Coût réel / mois</div>
@@ -2652,15 +2662,21 @@ const COULEUR_VERDICT_RP = {
   "Prix correct": "#4ADE80",
   "Un peu au-dessus du marché": "#FBBF24",
   "Au-dessus du marché": "#F87171",
+  "Très en dessous du marché": "#FBBF24",
   "Prix à vérifier": "#9CA3AF",
 };
 
 function analyseIARP(r) {
   const phrases = [];
   if (!r.marcheFiable) phrases.push("Pas assez de ventes récentes trouvées dans la commune : impossible de dire si le prix est bon. Compare avec les annonces et les ventes du secteur.");
-  else if (r.ecartMarchePct <= -7) phrases.push(`Le prix est ${Math.abs(r.ecartMarchePct)} % sous le marché du secteur : c'est une bonne affaire sur le papier, vérifie qu'il n'y a pas de défaut caché.`);
-  else if (r.ecartMarchePct <= 5) phrases.push("Le prix est dans la moyenne du secteur.");
-  else phrases.push(`Le prix est ${r.ecartMarchePct} % au-dessus du marché : tu as de bons arguments pour négocier.`);
+  else if (r.prixTresBas) phrases.push(`Même travaux compris, le bien coûte ${Math.abs(r.ecartAvecTravauxPct)} % de moins que les ventes du secteur : c'est inhabituel. Cherche la raison (état réel, terrain, voisinage, diagnostics) avant de te lancer.`);
+  else {
+    const e = r.ecartAvecTravauxPct ?? r.ecartMarchePct;
+    const suffixe = r.travauxProbable > 0 && r.ecartAvecTravauxPct !== undefined ? ", travaux compris" : "";
+    if (e <= -7) phrases.push(`Le bien coûte ${Math.abs(e)} % de moins que le marché du secteur${suffixe} : c'est une bonne affaire sur le papier, vérifie qu'il n'y a pas de défaut caché.`);
+    else if (e <= 5) phrases.push(`Le prix est dans la moyenne du secteur${suffixe}.`);
+    else phrases.push(`Le bien coûte ${e} % de plus que le marché${suffixe} : tu as de bons arguments pour négocier.`);
+  }
   phrases.push(`En tout, ce logement te coûtera environ ${fmt(r.coutTotalMensuel)} par mois, dont ${fmt(r.coutPossessionMensuel)} de frais en plus du crédit.`);
   if (r.passoire) phrases.push("Le DPE est mauvais : prévois une facture d'énergie élevée et des travaux d'isolation.");
   if (r.tauxEndettement !== null) {
@@ -2711,6 +2727,9 @@ function VueResultatRP({ r, onDiscuter, onBack, pro, onPasserPro }) {
   const [loyerCorrige, setLoyerCorrige] = useState("");
   if (!r) return null;
   const couleur = COULEUR_VERDICT_RP[r.verdict] || "#FBBF24";
+  // Les anciennes analyses enregistrées n'ont pas le prix travaux compris : on retombe sur le prix affiché.
+  const avecTravaux = r.travauxProbable > 0 && r.prixM2AvecTravaux > 0;
+  const ecartTravaux = r.ecartAvecTravauxPct ?? r.ecartMarchePct;
   const k = parAn ? 12 : 1;
   const unite = parAn ? "/ an" : "/ mois";
   const loyerComparaison = Number(loyerCorrige) > 0 ? Number(loyerCorrige) : r.loyerMarche;
@@ -2741,10 +2760,12 @@ function VueResultatRP({ r, onDiscuter, onBack, pro, onPasserPro }) {
               <div className="font-extrabold leading-tight" style={{ fontSize: "24px", color: couleur, ...font }}>{r.verdict}</div>
               {r.marcheFiable ? (<>
               <div className="mt-1.5" style={{ fontSize: "13px", color: C.onDark, ...font }}>
-                {r.ecartMarchePct > 0 ? "+" : ""}{r.ecartMarchePct} % par rapport au marché
+                {ecartTravaux > 0 ? "+" : ""}{ecartTravaux} % par rapport au marché{avecTravaux ? ", travaux compris" : ""}
               </div>
               <div style={{ fontSize: "12px", color: C.onDarkMuted, ...font }}>
-                {r.ecartMarcheEuros > 0 ? `soit ${fmt(r.ecartMarcheEuros)} de plus que le prix du secteur` : `soit ${fmt(Math.abs(r.ecartMarcheEuros))} de moins que le prix du secteur`}
+                {avecTravaux
+                  ? `prix affiché seul : ${r.ecartMarchePct > 0 ? "+" : ""}${r.ecartMarchePct} %`
+                  : r.ecartMarcheEuros > 0 ? `soit ${fmt(r.ecartMarcheEuros)} de plus que le prix du secteur` : `soit ${fmt(Math.abs(r.ecartMarcheEuros))} de moins que le prix du secteur`}
               </div>
               </>) : (
               <div className="mt-1.5" style={{ fontSize: "12.5px", color: C.onDarkMuted, ...font }}>
@@ -2777,7 +2798,22 @@ function VueResultatRP({ r, onDiscuter, onBack, pro, onPasserPro }) {
               </div>
               <div className="font-bold" style={{ fontSize: "14px", color: "#fff", ...font }}>{fmt(r.prixM2Marche.valeur)}/m²</div>
             </div>
+            {avecTravaux && (
+              <div className="col-span-2 mt-1">
+                <div className="flex items-center gap-1" style={{ fontSize: "11px", color: C.onDarkMuted, ...font }}>
+                  Avec les travaux
+                  <InfoTip text={`Prix affiché + ${fmt(r.travauxProbable)} de travaux, ramené au m². C'est ce que le bien te coûtera une fois remis en état : c'est ce chiffre qu'on compare au prix du marché.`} />
+                </div>
+                <div className="font-bold" style={{ fontSize: "14px", color: "#14F1D9", ...font }}>{fmt(r.prixM2AvecTravaux)}/m²</div>
+              </div>
+            )}
           </div>
+          {r.prixTresBas && (
+            <div className="mt-2.5 flex items-start gap-2 p-2.5 rounded-xl" style={{ background: "rgba(251,191,36,0.10)" }}>
+              <AlertTriangle size={14} color="#FBBF24" className="shrink-0 mt-0.5" />
+              <span style={{ fontSize: "11.5px", color: "#FDE68A", ...font }}>Un prix aussi bas cache souvent un défaut (structure, terrain, nuisances, diagnostics) ou des travaux plus lourds que prévu. Visite avec un professionnel et vérifie l'annonce avant de te lancer.</span>
+            </div>
+          )}
           {!r.marcheFiable && (
             <div className="mt-2.5 flex items-start gap-2 p-2.5 rounded-xl" style={{ background: "rgba(251,191,36,0.10)" }}>
               <AlertTriangle size={14} color="#FBBF24" className="shrink-0 mt-0.5" />
