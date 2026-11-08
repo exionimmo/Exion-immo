@@ -7,7 +7,7 @@ import {
   ChevronRight, ChevronDown, Wallet, TrendingUp, AlertTriangle, Search, Bot, Check,
   PieChart, CreditCard, Calendar, Pencil, ArrowRight, Info, PiggyBank, SlidersHorizontal, BarChart3,
   FileText, Wrench, Sparkles, HelpCircle, Share2, Lock, Zap, Droplet, Thermometer, DoorOpen, PaintBucket, ShieldCheck, Target, Eye, Key, MoreHorizontal,
-  Bell, Menu, ArrowUpRight, Download, CheckCircle2
+  Bell, Menu, ArrowUpRight, Download, CheckCircle2, Scale, Receipt, Flame
 } from "lucide-react";
 
 /* ============================================================
@@ -349,6 +349,164 @@ function trouverPrixMaxRentable(f, prixM2Marche, loyerM2Estime, sourceLoyerParam
 }
 
 /* ============================================================
+   ANALYSE « ACHETER POUR Y VIVRE » (résidence principale)
+   Toutes les valeurs sont des estimations indicatives.
+============================================================ */
+
+// Coût énergie (chauffage + eau chaude) en €/m²/an selon la classe DPE.
+// Ordres de grandeur ; une base de 400 €/an est ajoutée pour l'électricité courante.
+const ENERGIE_EURO_M2_AN = { A: 6, B: 9, C: 13, D: 18, E: 24, F: 31, G: 39 };
+const LOUER_ACHETER_HYP = { revalorisation: 0.01, hausseLoyer: 0.015, rendementEpargne: 0.02 };
+
+function arrondirA(n, pas) { return Math.round(n / pas) * pas; }
+
+function verdictPrixRP(ecartPct) {
+  if (ecartPct <= -7) return "Bonne affaire";
+  if (ecartPct <= 5) return "Prix correct";
+  if (ecartPct <= 12) return "Un peu au-dessus du marché";
+  return "Au-dessus du marché";
+}
+
+function calculerAchatRP(f, prixM2Marche, loyerM2Estime, sourceLoyer) {
+  const prixAnnonce = Number(f.prix) || 0;
+  const prix = Number(f.prixSimulation) > 0 ? Number(f.prixSimulation) : prixAnnonce;
+  const surface = Number(f.surface) || 1;
+  const estNeuf = f.ancienNeuf === "Neuf";
+  const estCopro = f.copropriete === "Oui";
+  const estAppartement = f.typeBien === "Appartement";
+
+  // --- Prix vs marché ---
+  const prixM2Annonce = Math.round(prixAnnonce / surface);
+  const valeurMarche = Math.round(prixM2Marche.valeur * surface);
+  const ecartMarchePct = Math.round(((prixM2Annonce - prixM2Marche.valeur) / prixM2Marche.valeur) * 100);
+  const ecartMarcheEuros = prixAnnonce - valeurMarche;
+  const marcheFiable = prixM2Marche.source === "DVF";
+  const verdict = verdictPrixRP(ecartMarchePct);
+  const passoire = ["F", "G"].includes(f.dpe);
+  const baseNegociation = marcheFiable ? Math.min(prixAnnonce * 0.97, valeurMarche * (passoire ? 0.95 : 1)) : prixAnnonce * 0.97;
+  const prixConseille = Math.max(arrondirA(baseNegociation, 1000), 0);
+  const margeNegociation = Math.max(prixAnnonce - prixConseille, 0);
+
+  // --- Travaux (même logique que l'analyse investisseur) ---
+  let travauxProbable = 0;
+  let postesTravaux = [];
+  if (typeof f.travauxDetailProbable === "number") {
+    travauxProbable = Math.round(f.travauxDetailProbable);
+    postesTravaux = f.travauxDetailLabels || [];
+  } else {
+    const postes = new Set();
+    if (f.etatBien === "A rafraichir") postes.add("rafraichir");
+    if (f.etatBien === "A renover entierement") ["rafraichir", "electricite", "plomberie", "sdb", "cuisine", "isolation"].forEach((p) => postes.add(p));
+    if (["E", "F", "G"].includes(f.dpe)) { postes.add("electricite"); postes.add("isolation"); }
+    postes.forEach((p) => { const g = GRID_TRAVAUX[p]; travauxProbable += g.probable * (g.parM2 ? surface : 1); postesTravaux.push(g.label); });
+    travauxProbable = Math.round(travauxProbable);
+  }
+
+  // --- Frais d'achat et crédit ---
+  const fraisNotaire = Math.round(prix * (estNeuf ? 0.025 : 0.08));
+  const apport = Number(f.apport) || 0;
+  const taux = Number(f.taux) || 0;
+  const duree = Number(f.duree) || 20;
+  const capitalEmprunte = Math.max(prix + fraisNotaire + travauxProbable - apport, 0);
+  const tauxMensuel = taux / 100 / 12;
+  const nbMois = duree * 12;
+  let mensualite = tauxMensuel > 0 ? (capitalEmprunte * tauxMensuel) / (1 - Math.pow(1 + tauxMensuel, -nbMois)) : capitalEmprunte / nbMois;
+  mensualite = Math.round(mensualite || 0);
+  const coutInterets = Math.max(Math.round(mensualite * nbMois - capitalEmprunte), 0);
+  const fraisDossier = capitalEmprunte > 0 ? Math.min(Math.round(capitalEmprunte * 0.01), 1000) : 0;
+  const fraisGarantie = Math.round(capitalEmprunte * 0.013);
+  const tauxAssurance = Number(f.tauxAssurance) > 0 ? Number(f.tauxAssurance) : 0.3;
+  const assuranceMensuelle = Math.round((capitalEmprunte * (tauxAssurance / 100)) / 12);
+  const mensualiteAvecAssurance = mensualite + assuranceMensuelle;
+  const coutTotalCreditReel = capitalEmprunte + coutInterets + fraisDossier + fraisGarantie + assuranceMensuelle * nbMois;
+  const budgetTotal = prix + fraisNotaire + travauxProbable + fraisDossier + fraisGarantie;
+  const creditAutorise = Number(f.creditAutorise) || 0;
+
+  // --- Loyer de marché de ce bien (sert à la taxe foncière estimée et à « louer ou acheter ») ---
+  const loyerMarche = loyerM2Estime > 0 ? Math.round(surface * loyerM2Estime) : 0;
+
+  // --- Coût de possession mensuel ---
+  const taxeFonciereConnue = Number(f.taxeFonciereConnue) > 0;
+  // Repère courant : la taxe foncière représente environ un mois de loyer du bien.
+  const taxeFonciere = taxeFonciereConnue ? Math.round(Number(f.taxeFonciereConnue))
+    : loyerMarche > 0 ? arrondirA(loyerMarche, 10) : arrondirA(prix * 0.008, 10);
+  const chargesCoproConnues = Number(f.chargesCoproConnues) > 0;
+  const chargesCopro = !estCopro ? 0 : chargesCoproConnues ? Math.round(Number(f.chargesCoproConnues)) : Math.round(surface * 2.5);
+  const assuranceHabitation = estAppartement ? 15 : 25;
+  const dpeCalcul = ENERGIE_EURO_M2_AN[f.dpe] ? f.dpe : "D";
+  const energieMensuelle = Math.round((surface * ENERGIE_EURO_M2_AN[dpeCalcul] + 400) / 12);
+  const eauMensuelle = estAppartement ? 30 : 40;
+  const entretienMensuel = Math.round((prix * (estAppartement ? 0.004 : 0.008)) / 12);
+  const coutPossessionMensuel = Math.round(taxeFonciere / 12) + chargesCopro + assuranceHabitation + energieMensuelle + eauMensuelle + entretienMensuel;
+  const coutTotalMensuel = mensualiteAvecAssurance + coutPossessionMensuel;
+
+  // --- Budget du foyer ---
+  const revenusFoyer = Number(f.revenusFoyer) || 0;
+  const creditsEnCours = Number(f.creditsEnCours) || 0;
+  const tauxEndettement = revenusFoyer > 0 ? Math.round(((mensualiteAvecAssurance + creditsEnCours) / revenusFoyer) * 1000) / 10 : null;
+  const resteAVivre = revenusFoyer > 0 ? revenusFoyer - creditsEnCours - coutTotalMensuel : null;
+  const mensualiteMax35 = revenusFoyer > 0 ? Math.max(Math.round(revenusFoyer * 0.35 - creditsEnCours), 0) : null;
+
+  // --- Score acheteur ---
+  const clamp = (n) => Math.max(0, Math.min(100, n));
+  const scorePrix = marcheFiable ? clamp(70 - ecartMarchePct * 2) : 50;
+  const scoreDPE = ["A", "B", "C", "D"].includes(f.dpe) ? 80 : f.dpe === "E" ? 50 : passoire ? 20 : 50;
+  const scoreTravaux = clamp(100 - (prix > 0 ? travauxProbable / prix : 0) * 100);
+  const scoreBudget = tauxEndettement === null ? null : tauxEndettement <= 30 ? 100 : tauxEndettement <= 35 ? 75 : tauxEndettement <= 40 ? 35 : 10;
+  const scoreGlobal = Math.round(scoreBudget === null
+    ? scorePrix * 0.6 + scoreDPE * 0.2 + scoreTravaux * 0.2
+    : scorePrix * 0.5 + scoreDPE * 0.15 + scoreTravaux * 0.15 + scoreBudget * 0.2);
+
+  return {
+    mode: "rp",
+    prix, prixAnnonce, surface, ville: f.ville, codePostal: f.codePostal, typeBien: f.typeBien, dpe: f.dpe, estNeuf, estCopro,
+    prixM2Annonce, prixM2Marche, valeurMarche, ecartMarchePct, ecartMarcheEuros, marcheFiable, verdict, passoire,
+    prixConseille, margeNegociation,
+    postesTravaux, travauxProbable,
+    fraisNotaire, fraisDossier, fraisGarantie, budgetTotal, apport, capitalEmprunte, creditAutorise,
+    taux, duree, tauxAssurance, mensualite, assuranceMensuelle, mensualiteAvecAssurance, coutInterets, coutTotalCreditReel,
+    loyerMarche, sourceLoyer,
+    taxeFonciere, taxeFonciereConnue, chargesCopro, chargesCoproConnues, assuranceHabitation, energieMensuelle, dpeCalcul,
+    eauMensuelle, entretienMensuel, coutPossessionMensuel, coutTotalMensuel,
+    revenusFoyer, creditsEnCours, tauxEndettement, resteAVivre, mensualiteMax35,
+    scoreGlobal,
+  };
+}
+
+// Compare, année par année, le coût net d'acheter ce bien et celui de louer le même bien.
+// Coût net achat = argent sorti (apport, frais bancaires, mensualités, taxe foncière, entretien) − patrimoine (valeur − capital restant dû).
+// Coût net location = loyers payés − intérêts gagnés en plaçant l'argent qui aurait servi à l'achat.
+// Énergie, eau, assurance habitation et charges sont payées dans les deux cas : elles s'annulent.
+function simulerLouerAcheter(r, loyerInitial) {
+  if (!(loyerInitial > 0)) return { pointMort: null, lignes: [] };
+  const { revalorisation, hausseLoyer, rendementEpargne } = LOUER_ACHETER_HYP;
+  const tm = r.taux / 100 / 12;
+  const miseDeDepart = r.apport + r.fraisDossier + r.fraisGarantie;
+  let crd = r.capitalEmprunte;
+  let sortiAchat = miseDeDepart;
+  let loyersCumules = 0;
+  let pointMort = null;
+  const lignes = [];
+  for (let an = 1; an <= 30; an++) {
+    for (let m = 0; m < 12; m++) {
+      if (crd > 0.5) {
+        const interets = crd * tm;
+        crd -= Math.min(r.mensualite - interets, crd);
+        sortiAchat += r.mensualiteAvecAssurance;
+      }
+    }
+    sortiAchat += r.taxeFonciere + r.entretienMensuel * 12;
+    loyersCumules += loyerInitial * 12 * Math.pow(1 + hausseLoyer, an - 1);
+    const patrimoine = r.prix * Math.pow(1 + revalorisation, an) - Math.max(crd, 0);
+    const coutNetAchat = Math.round(sortiAchat - patrimoine);
+    const coutNetLocation = Math.round(loyersCumules - miseDeDepart * (Math.pow(1 + rendementEpargne, an) - 1));
+    if (pointMort === null && coutNetAchat <= coutNetLocation) pointMort = an;
+    lignes.push({ an, coutNetAchat, coutNetLocation });
+  }
+  return { pointMort, lignes };
+}
+
+/* ============================================================
    UI KIT
 ============================================================ */
 
@@ -458,11 +616,16 @@ const VERDICT_DOT = {
   "À négocier": "#F59E0B",
   "Risqué": "#EF4444",
   "À approfondir": "#9CA3AF",
+  "Bonne affaire": "#22C55E",
+  "Prix correct": "#4ADE80",
+  "Un peu au-dessus du marché": "#F59E0B",
+  "Au-dessus du marché": "#EF4444",
 };
 
 function ProjectCard({ p, onOpen, onSupprimer }) {
   const dotColor = VERDICT_DOT[p.verdict] || VERDICT_DOT["À approfondir"];
   const progress = Math.round(p.scoreGlobal || 0);
+  const estRP = p.mode === "rp";
   function handleSupprimer(e) {
     e.stopPropagation();
     if (window.confirm("Supprimer cette analyse ? Cette action est définitive.")) {
@@ -475,17 +638,33 @@ function ProjectCard({ p, onOpen, onSupprimer }) {
         <button onClick={() => onOpen(p)} className="w-full text-left exion-press">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: C.gradientSoft }}>
-              <HomeIcon size={20} color="#8B5CF6" />
+              {estRP ? <Key size={20} color="#14F1D9" /> : <HomeIcon size={20} color="#8B5CF6" />}
             </div>
             <div className="min-w-0 flex-1">
  <div className="font-semibold truncate" style={{ fontSize: '14px', color: C.onDark, ...font }}>{p.typeBien} · {p.ville} ({p.codePostal})</div>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dotColor }} />
- <span style={{ fontSize: '11.5px', color: C.onDarkMuted, ...font }}>{p.verdict}</span>
+ <span style={{ fontSize: '11.5px', color: C.onDarkMuted, ...font }}>{estRP ? `Pour y vivre · ${p.verdict}` : p.verdict}</span>
               </div>
             </div>
             <ChevronRight size={18} color={C.onDarkMuted} className="shrink-0" />
           </div>
+          {estRP ? (
+          <div className="flex items-center justify-between pt-2.5" style={{ borderTop: "1px solid #22304C" }}>
+            <div>
+ <div style={{ fontSize: '10.5px', color: C.onDarkMuted, ...font }}>Écart au marché</div>
+ <div className="font-bold" style={{ fontSize: '14px', color: p.ecartMarchePct <= 5 ? C.green : C.red, ...font }}>{p.ecartMarchePct > 0 ? "+" : ""}{p.ecartMarchePct}%</div>
+            </div>
+            <div>
+ <div style={{ fontSize: '10.5px', color: C.onDarkMuted, ...font }}>Coût réel / mois</div>
+ <div className="font-bold" style={{ fontSize: '14px', color: C.onDark, ...font }}>{fmt(p.coutTotalMensuel)}</div>
+            </div>
+            <div>
+ <div className="text-center mb-1" style={{ fontSize: '10.5px', color: C.onDarkMuted, ...font }}>Score</div>
+              <CircularProgress percent={progress} color="#14F1D9" size={38} />
+            </div>
+          </div>
+          ) : (
           <div className="flex items-center justify-between pt-2.5" style={{ borderTop: "1px solid #22304C" }}>
             <div>
  <div style={{ fontSize: '10.5px', color: C.onDarkMuted, ...font }}>Rentabilité nette</div>
@@ -500,6 +679,7 @@ function ProjectCard({ p, onOpen, onSupprimer }) {
               <CircularProgress percent={progress} color="#8B5CF6" size={38} />
             </div>
           </div>
+          )}
         </button>
         {onSupprimer && (
           <button onClick={handleSupprimer} className="w-full mt-2.5 pt-2.5 flex items-center justify-center gap-1.5 exion-press" style={{ borderTop: "1px solid #22304C", fontSize: "12px", color: C.red, ...font }}>
@@ -585,7 +765,7 @@ function VueAccueil({ projets, onNouveau, onOuvrir, onSupprimer, onOutil, onVoir
             </div>
             <div className="min-w-0">
  <div className="font-bold" style={{ fontSize: '15px', color: "#fff", ...font }}>Lance ta première analyse</div>
- <div className="truncate" style={{ fontSize: '12.5px', color: "rgba(255,255,255,0.75)", ...font }}>Prix, travaux, crédit, rentabilité</div>
+ <div className="truncate" style={{ fontSize: '12.5px', color: "rgba(255,255,255,0.75)", ...font }}>Investir ou acheter pour y vivre</div>
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -1844,11 +2024,17 @@ const ETAPES = [
   { id: 3, label: "Financement", icon: CreditCard },
   { id: 4, label: "Fiscalité", icon: TrendingUp },
 ];
+const ETAPES_RP = [
+  { id: 1, label: "Le bien", icon: HomeIcon },
+  { id: 2, label: "Travaux", icon: Wrench },
+  { id: 3, label: "Financement", icon: CreditCard },
+  { id: 4, label: "Ton budget", icon: Wallet },
+];
 
-function Stepper({ step, onGoTo }) {
+function Stepper({ step, onGoTo, etapes = ETAPES }) {
   return (
     <div className="flex items-center justify-between px-2 mb-5">
-      {ETAPES.map((e, i) => {
+      {etapes.map((e, i) => {
         const active = e.id === step;
         const done = e.id < step;
         return (
@@ -1864,7 +2050,7 @@ function Stepper({ step, onGoTo }) {
               </div>
               <span style={{ fontSize: "10.5px", color: active ? "#fff" : C.onDarkMuted, ...font }}>{e.label}</span>
             </button>
-            {i < ETAPES.length - 1 && <div className="flex-1 h-px mx-1" style={{ background: e.id < step ? C.green : "#2A3A5C" }} />}
+            {i < etapes.length - 1 && <div className="flex-1 h-px mx-1" style={{ background: e.id < step ? C.green : "#2A3A5C" }} />}
           </React.Fragment>
         );
       })}
@@ -1890,9 +2076,13 @@ function VueFormulaire({ onCalculer, chargement, onBack, credit, setCredit, bien
     exterieurType: "Aucun", exterieurSurface: "",
     creditAutorise: "", apport: credit.apport || "", taux: credit.taux || "4", duree: credit.duree || "20", tauxAssurance: "",
     tmi: "", usage: "Investissement locatif", loyerVise: bien.loyer || "", prixSimulation: "",
+    mode: "invest", revenusFoyer: "", creditsEnCours: "", taxeFonciereConnue: "", chargesCoproConnues: "",
   }));
   const [erreurs, setErreurs] = useState({});
   const set = (k) => (e) => setF((prev) => ({ ...prev, [k]: e.target.value }));
+  const estRP = f.mode === "rp";
+  const etapes = estRP ? ETAPES_RP : ETAPES;
+  const choisirMode = (mode) => setF((prev) => ({ ...prev, mode, usage: mode === "rp" ? "Résidence principale" : "Investissement locatif" }));
 
   const surfTravaux = Number(f.surface) || 0;
   function montantPosteForm(p) {
@@ -1947,7 +2137,31 @@ function VueFormulaire({ onCalculer, chargement, onBack, credit, setCredit, bien
           </div>
         )}
 
-        <Stepper step={step} onGoTo={setStep} />
+        {step === 1 && (
+          <div className="mb-4 exion-fade">
+            <div className="font-semibold uppercase tracking-wide mb-2 px-1" style={{ fontSize: "12px", color: C.onDarkMuted, ...font }}>Ton projet</div>
+            <div className="grid grid-cols-2 gap-2.5">
+              {[
+                { id: "invest", icon: TrendingUp, titre: "Investir", sous: "Louer le bien : rentabilité, cash-flow" },
+                { id: "rp", icon: Key, titre: "Acheter pour y vivre", sous: "Bon prix ? Coût réel, budget, impôts" },
+              ].map((m) => {
+                const actif = f.mode === m.id;
+                return (
+                  <button key={m.id} type="button" onClick={() => choisirMode(m.id)} className="text-left rounded-2xl p-3 exion-press"
+                    style={{ background: actif ? C.gradientSoft : "#161B38", border: actif ? "1.5px solid #8B5CF6" : "1px solid #2A3A5C" }}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <m.icon size={15} color={actif ? "#14F1D9" : C.onDarkMuted} />
+                      <span className="font-bold" style={{ fontSize: "13.5px", color: actif ? "#fff" : C.onDark, ...font }}>{m.titre}</span>
+                    </div>
+                    <span style={{ fontSize: "11px", lineHeight: "1.35", color: C.onDarkMuted, ...font }}>{m.sous}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <Stepper step={step} onGoTo={setStep} etapes={etapes} />
 
         {step === 1 && (
           <div className="rounded-[26px] p-4 mb-2.5 exion-fade" style={{ background: "#1A1B42", border: "1px solid #2A3A5C" }}>
@@ -2023,14 +2237,38 @@ function VueFormulaire({ onCalculer, chargement, onBack, credit, setCredit, bien
           </div>
         )}
 
-        {step === 4 && (
+        {step === 4 && estRP && (
+          <div className="rounded-[26px] p-4 mb-2.5 exion-fade" style={{ background: "#1A1B42", border: "1px solid #2A3A5C" }}>
+            <div className="flex items-center gap-2 mb-3">
+              <Wallet size={16} color="#8B5CF6" />
+              <span className="font-bold uppercase tracking-wide" style={{ fontSize: "13px", color: "#fff", ...font }}>Ton budget</span>
+            </div>
+            <p className="-mt-1 mb-3" style={{ fontSize: "11.5px", color: C.onDarkMuted, ...font }}>
+              Tout est optionnel. Plus tu en remplis, plus l'analyse est précise.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Revenus nets du foyer (€/mois)"><TextInput type="number" value={f.revenusFoyer} onChange={set("revenusFoyer")} placeholder="3200" /></Field>
+              <Field label="Crédits en cours (€/mois)"><TextInput type="number" value={f.creditsEnCours} onChange={set("creditsEnCours")} placeholder="0" /></Field>
+            </div>
+            <p className="-mt-2 mb-3" style={{ fontSize: "11.5px", color: C.textMuted, ...font }}>
+              Sert à calculer ton taux d'endettement et ce qu'il te reste pour vivre. Crédits en cours : voiture, conso, etc.
+            </p>
+            <Field label="Taxe foncière si tu la connais (€/an)"><TextInput type="number" value={f.taxeFonciereConnue} onChange={set("taxeFonciereConnue")} placeholder="Estimée automatiquement si vide" /></Field>
+            {f.copropriete === "Oui" && (
+              <Field label="Charges de copropriété si tu les connais (€/mois)"><TextInput type="number" value={f.chargesCoproConnues} onChange={set("chargesCoproConnues")} placeholder="Estimées automatiquement si vide" /></Field>
+            )}
+            <Field label="Prix que tu comptes proposer (optionnel)"><TextInput type="number" value={f.prixSimulation} onChange={set("prixSimulation")} placeholder="Sinon, le prix affiché est utilisé" /></Field>
+          </div>
+        )}
+
+        {step === 4 && !estRP && (
           <div className="rounded-[26px] p-4 mb-2.5 exion-fade" style={{ background: "#1A1B42", border: "1px solid #2A3A5C" }}>
             <div className="flex items-center gap-2 mb-3">
               <TrendingUp size={16} color="#8B5CF6" />
               <span className="font-bold uppercase tracking-wide" style={{ fontSize: "13px", color: "#fff", ...font }}>Fiscalité & usage</span>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Usage"><Select value={f.usage} onChange={set("usage")}><option>Investissement locatif</option><option>Résidence principale</option><option>Revente</option></Select></Field>
+              <Field label="Usage"><Select value={f.usage} onChange={set("usage")}><option>Investissement locatif</option><option>Revente</option></Select></Field>
               <Field label="TMI (tranche d'imposition)"><Select value={f.tmi} onChange={set("tmi")}><option value="">Non renseignée</option><option>0%</option><option>11%</option><option>30%</option><option>41%</option><option>45%</option></Select></Field>
             </div>
             <p className="-mt-2 mb-3" style={{ fontSize: "11.5px", color: C.textMuted, ...font }}>
@@ -2041,7 +2279,7 @@ function VueFormulaire({ onCalculer, chargement, onBack, credit, setCredit, bien
           </div>
         )}
 
-        {ETAPES.filter((e) => e.id > step).map((e) => <EtapeVerrouillee key={e.id} label={e.label} icon={e.icon} />)}
+        {etapes.filter((e) => e.id > step).map((e) => <EtapeVerrouillee key={e.id} label={e.label} icon={e.icon} />)}
 
         <PrimaryButton disabled={chargement} onClick={suivant} className="mt-1">
           {chargement ? <><Loader2 size={18} className="animate-spin" /> Calcul en cours…</>
@@ -2376,6 +2614,311 @@ function VueResultat({ r, onDiscuter, onBack, onVoirDetail, verrouille, onDebloq
           <MessageCircle size={18} /> Poser une question sur ce bien
         </button>
         <p className="text-center mt-1" style={{ fontSize: "11px", color: C.onDarkMuted, ...font }}>Estimations indicatives. À vérifier : devis réels, avis d'imposition, syndic, PLU.</p>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   RÉSULTAT « ACHETER POUR Y VIVRE »
+============================================================ */
+
+const COULEUR_VERDICT_RP = {
+  "Bonne affaire": "#4ADE80",
+  "Prix correct": "#4ADE80",
+  "Un peu au-dessus du marché": "#FBBF24",
+  "Au-dessus du marché": "#F87171",
+};
+
+function analyseIARP(r) {
+  const phrases = [];
+  if (!r.marcheFiable) phrases.push("Peu de ventes comparables ont été trouvées autour de ce bien : la comparaison au marché est à prendre avec prudence.");
+  else if (r.ecartMarchePct <= -7) phrases.push(`Le prix est ${Math.abs(r.ecartMarchePct)} % sous le marché du secteur : c'est une bonne affaire sur le papier, vérifie qu'il n'y a pas de défaut caché.`);
+  else if (r.ecartMarchePct <= 5) phrases.push("Le prix est dans la moyenne du secteur.");
+  else phrases.push(`Le prix est ${r.ecartMarchePct} % au-dessus du marché : tu as de bons arguments pour négocier.`);
+  phrases.push(`En tout, ce logement te coûtera environ ${fmt(r.coutTotalMensuel)} par mois, dont ${fmt(r.coutPossessionMensuel)} de frais en plus du crédit.`);
+  if (r.passoire) phrases.push("Le DPE est mauvais : prévois une facture d'énergie élevée et des travaux d'isolation.");
+  if (r.tauxEndettement !== null) {
+    phrases.push(r.tauxEndettement <= 35
+      ? `Ton taux d'endettement serait de ${String(r.tauxEndettement).replace(".", ",")} %, sous la limite de 35 % des banques.`
+      : `Ton taux d'endettement serait de ${String(r.tauxEndettement).replace(".", ",")} %, au-dessus de la limite de 35 % : les banques risquent de refuser.`);
+  }
+  return phrases.join(" ");
+}
+
+function CarteProRP({ onPasserPro }) {
+  const avantages = [
+    "Le prix à proposer pour négocier",
+    "Le détail de toutes tes dépenses, mois par mois",
+    "Les frais d'achat et le budget total",
+    "Ton taux d'endettement et ton reste à vivre",
+    "Impôts et taxes à payer chaque année",
+    "Louer ou acheter : au bout de combien d'années c'est rentable",
+  ];
+  return (
+    <div className="rounded-[26px] p-5 exion-fade relative overflow-hidden" style={{ background: "linear-gradient(135deg, rgba(20,241,217,0.12), rgba(139,92,246,0.18))", border: "1px solid #3A3D6B" }}>
+      <div className="flex items-center gap-2 mb-1">
+        <Lock size={16} color="#C4B5FD" />
+        <span className="font-bold" style={{ fontSize: "15px", color: "#fff", ...font }}>Débloque l'analyse acheteur complète</span>
+      </div>
+      <p className="mb-3" style={{ fontSize: "12.5px", color: C.onDarkMuted, lineHeight: "1.45", ...font }}>
+        Avec le plan Pro, tu sais exactement ce que tu vas payer avant de signer.
+      </p>
+      <div className="space-y-2 mb-4">
+        {avantages.map((a) => (
+          <div key={a} className="flex items-start gap-2">
+            <Check size={15} color={C.green} strokeWidth={3} className="shrink-0 mt-0.5" />
+            <span style={{ fontSize: "13px", color: "#E5E7F5", lineHeight: "1.4", ...font }}>{a}</span>
+          </div>
+        ))}
+      </div>
+      <button onClick={() => { window.exionTrack?.("DeblocageRPClique"); onPasserPro(); }} className="w-full flex items-center justify-center gap-2 py-3.5 rounded-full font-bold text-white exion-press" style={{ fontSize: "14.5px", background: C.gradient, boxShadow: "0 8px 24px rgba(139,92,246,0.35)", ...font }}>
+        Passer Pro <ChevronRight size={17} />
+      </button>
+      <p className="text-center mt-2" style={{ fontSize: "11.5px", color: C.onDarkMuted, ...font }}>Sans engagement · annulable à tout moment</p>
+    </div>
+  );
+}
+
+function VueResultatRP({ r, onDiscuter, onBack, pro, onPasserPro }) {
+  const [parAn, setParAn] = useState(false);
+  const [editionLoyer, setEditionLoyer] = useState(false);
+  const [loyerCorrige, setLoyerCorrige] = useState("");
+  if (!r) return null;
+  const couleur = COULEUR_VERDICT_RP[r.verdict] || "#FBBF24";
+  const k = parAn ? 12 : 1;
+  const unite = parAn ? "/ an" : "/ mois";
+  const loyerComparaison = Number(loyerCorrige) > 0 ? Number(loyerCorrige) : r.loyerMarche;
+  const louerAcheter = simulerLouerAcheter(r, loyerComparaison);
+  const reperes = louerAcheter.lignes.filter((l) => [5, 10, 15, 20, 25].includes(l.an));
+  const te = r.tauxEndettement;
+  const couleurTE = te === null ? C.onDark : te <= 33 ? C.green : te <= 35 ? "#FBBF24" : "#F87171";
+  const pct = (n) => `${String(n).replace(".", ",")} %`;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between px-5 pt-2 pb-1">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} aria-label="Retour"><ArrowLeft size={20} color={C.onDark} /></button>
+          <span className="font-bold uppercase tracking-wide" style={{ fontSize: "13px", color: C.onDark, ...font }}>Analyse acheteur</span>
+        </div>
+        <Key size={18} color={C.onDarkMuted} />
+      </div>
+
+      <div className="px-5 pb-24 pt-2 space-y-2.5">
+        {/* Verdict prix */}
+        <div className="rounded-[26px] p-4 exion-fade" style={{ background: "#1A1B42", border: "1px solid #2A3A5C" }}>
+          <div className="flex items-center justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="font-semibold uppercase tracking-wide" style={{ fontSize: "11.5px", color: C.onDarkMuted, ...font }}>Ce bien est-il au bon prix ?</span>
+              </div>
+              <div className="font-extrabold leading-tight" style={{ fontSize: "24px", color: couleur, ...font }}>{r.verdict}</div>
+              <div className="mt-1.5" style={{ fontSize: "13px", color: C.onDark, ...font }}>
+                {r.ecartMarchePct > 0 ? "+" : ""}{r.ecartMarchePct} % par rapport au marché
+              </div>
+              <div style={{ fontSize: "12px", color: C.onDarkMuted, ...font }}>
+                {r.ecartMarcheEuros > 0 ? `soit ${fmt(r.ecartMarcheEuros)} de plus que le prix du secteur` : `soit ${fmt(Math.abs(r.ecartMarcheEuros))} de moins que le prix du secteur`}
+              </div>
+            </div>
+            <div className="relative w-20 h-20 shrink-0 ml-2">
+              <svg viewBox="0 0 100 100" className="w-20 h-20 -rotate-90">
+                <circle cx="50" cy="50" r="44" fill="none" stroke="#22304C" strokeWidth="7" />
+                <circle cx="50" cy="50" r="44" fill="none" stroke={couleur} strokeWidth="7" strokeLinecap="round" pathLength="100" strokeDasharray={`${r.scoreGlobal} 100`} />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="font-extrabold leading-none" style={{ fontSize: "21px", color: "#fff", ...font }}>{r.scoreGlobal}</span>
+                <span style={{ fontSize: "9.5px", color: C.onDarkMuted, ...font }}>/100</span>
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 pt-3 grid grid-cols-2 gap-2" style={{ borderTop: "1px solid #22304C" }}>
+            <div>
+              <div style={{ fontSize: "11px", color: C.onDarkMuted, ...font }}>Prix affiché</div>
+              <div className="font-bold" style={{ fontSize: "14px", color: "#fff", ...font }}>{fmt(r.prixM2Annonce)}/m²</div>
+            </div>
+            <div>
+              <div className="flex items-center gap-1" style={{ fontSize: "11px", color: C.onDarkMuted, ...font }}>
+                Prix du marché
+                <InfoTip text={r.marcheFiable
+                  ? `Prix médian de ${r.prixM2Marche.n} ventes réelles (base DVF de l'État) dans un rayon de ${r.prixM2Marche.rayonKm} km.`
+                  : "Pas assez de ventes trouvées autour de ce bien : c'est une moyenne nationale, à prendre avec prudence."} />
+              </div>
+              <div className="font-bold" style={{ fontSize: "14px", color: "#fff", ...font }}>{fmt(r.prixM2Marche.valeur)}/m²</div>
+            </div>
+          </div>
+          {!r.marcheFiable && (
+            <div className="mt-2.5 flex items-start gap-2 p-2.5 rounded-xl" style={{ background: "rgba(251,191,36,0.10)" }}>
+              <AlertTriangle size={14} color="#FBBF24" className="shrink-0 mt-0.5" />
+              <span style={{ fontSize: "11.5px", color: "#FDE68A", ...font }}>Peu de ventes comparables dans ce secteur : verdict indicatif.</span>
+            </div>
+          )}
+        </div>
+
+        {/* Coût réel mensuel (visible par tous) */}
+        <div className="rounded-[26px] p-4 exion-fade" style={{ background: "linear-gradient(135deg, rgba(20,241,217,0.12), rgba(139,92,246,0.14))", border: "1px solid #3A3D6B" }}>
+          <div className="flex items-center gap-1.5 mb-1">
+            <Wallet size={14} color="#14F1D9" />
+            <span className="font-semibold uppercase tracking-wide" style={{ fontSize: "11.5px", color: "#A5F3FC", ...font }}>Ce que ce logement te coûtera vraiment</span>
+            <InfoTip text="Crédit + assurance emprunteur + taxe foncière + charges + assurance habitation + énergie + eau + entretien. Ce sont des estimations : corrige-les avec tes vrais chiffres quand tu les as." />
+          </div>
+          <div className="font-extrabold leading-none" style={{ fontSize: "32px", color: "#fff", ...font }}>
+            {fmt(r.coutTotalMensuel)}<span style={{ fontSize: "15px", color: C.onDarkMuted }}> / mois</span>
+          </div>
+          <div className="mt-1.5" style={{ fontSize: "12.5px", color: C.onDarkMuted, ...font }}>
+            soit {fmt(r.coutTotalMensuel * 12)} par an · dont {fmt(r.mensualiteAvecAssurance)} de crédit et {fmt(r.coutPossessionMensuel)} de frais
+          </div>
+        </div>
+
+        {!pro ? <CarteProRP onPasserPro={onPasserPro} /> : (<>
+          {/* Prix conseillé */}
+          <div className="rounded-[22px] p-4 exion-fade" style={{ background: "linear-gradient(135deg, rgba(139,92,246,0.16), rgba(20,241,217,0.08))", border: "1px solid #3A3D6B" }}>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Target size={14} color="#A855F7" />
+              <span className="font-semibold uppercase tracking-wide" style={{ fontSize: "11.5px", color: "#C4B5FD", ...font }}>Prix à proposer</span>
+              <InfoTip text="Offre de départ conseillée : le plus bas entre le prix affiché moins 3 % (marge de négociation courante) et le prix du marché pour ce bien, avec une décote de 5 % si le DPE est F ou G. Ce n'est pas une expertise." />
+            </div>
+            <div className="font-extrabold leading-none" style={{ fontSize: "26px", color: "#fff", ...font }}>{fmt(r.prixConseille)}</div>
+            <div className="mt-1" style={{ fontSize: "12px", color: C.onDarkMuted, ...font }}>
+              {r.margeNegociation > 0 ? `soit ${fmt(r.margeNegociation)} de moins que le prix affiché` : "Le prix affiché est déjà correct"}
+            </div>
+            <div className="mt-2.5 space-y-1.5">
+              {r.marcheFiable && r.ecartMarchePct > 5 && <p style={{ fontSize: "12px", color: "#E5E7F5", ...font }}>• Argument : le bien est affiché {r.ecartMarchePct} % au-dessus des ventes du secteur.</p>}
+              {r.passoire && <p style={{ fontSize: "12px", color: "#E5E7F5", ...font }}>• Argument : DPE {r.dpe}, isolation à refaire et bien moins recherché à la revente.</p>}
+              {r.travauxProbable > 0 && <p style={{ fontSize: "12px", color: "#E5E7F5", ...font }}>• Argument : {fmt(r.travauxProbable)} de travaux à prévoir.</p>}
+            </div>
+          </div>
+
+          {/* Coût détaillé */}
+          <div className="rounded-[26px] p-4 exion-fade" style={{ background: "#1A1B42", border: "1px solid #2A3A5C" }}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-semibold uppercase tracking-wide" style={{ fontSize: "12px", color: C.onDarkMuted, ...font }}>Toutes tes dépenses</span>
+              <div className="flex rounded-full p-0.5" style={{ background: "#12142F", border: "1px solid #2A3A5C" }}>
+                {[["Mois", false], ["An", true]].map(([lbl, v]) => (
+                  <button key={lbl} onClick={() => setParAn(v)} className="px-2.5 py-0.5 rounded-full font-semibold" style={{ fontSize: "11px", background: parAn === v ? C.gradient : "transparent", color: "#fff", ...font }}>{lbl}</button>
+                ))}
+              </div>
+            </div>
+            <ResumeLigne icon={Landmark} label="Crédit + assurance emprunteur" valeur={fmt(r.mensualiteAvecAssurance * k)} />
+            <ResumeLigne icon={Receipt} label={r.taxeFonciereConnue ? "Taxe foncière" : "Taxe foncière (estimée)"} valeur={fmt((r.taxeFonciere / 12) * k)}
+              info={r.taxeFonciereConnue ? "Le montant que tu as indiqué." : "Estimation : environ un mois de loyer du bien. Demande le dernier avis de taxe foncière au vendeur, le vrai montant dépend de la commune."} />
+            {r.estCopro && <ResumeLigne icon={Building2} label={r.chargesCoproConnues ? "Charges de copropriété" : "Charges de copro (estimées)"} valeur={fmt(r.chargesCopro * k)}
+              info="Entretien des parties communes, ascenseur, gardien... Demande les 3 derniers procès-verbaux d'AG et le montant exact au vendeur." />}
+            <ResumeLigne icon={ShieldCheck} label="Assurance habitation" valeur={fmt(r.assuranceHabitation * k)} />
+            <ResumeLigne icon={Flame} label={`Énergie (DPE ${r.dpeCalcul}${["A","B","C","D","E","F","G"].includes(r.dpe) ? "" : " supposé"})`} valeur={fmt(r.energieMensuelle * k)}
+              info="Chauffage, eau chaude et électricité, estimés selon la surface et l'étiquette DPE. Une maison mal isolée (F ou G) peut coûter 3 fois plus cher à chauffer." />
+            <ResumeLigne icon={Droplet} label="Eau" valeur={fmt(r.eauMensuelle * k)} />
+            <ResumeLigne icon={Wrench} label="Entretien & réparations" valeur={fmt(r.entretienMensuel * k)}
+              info={r.typeBien === "Maison" ? "Provision de 0,8 % de la valeur par an : toiture, chaudière, façade, jardin... À mettre de côté chaque mois." : "Provision de 0,4 % de la valeur par an pour l'entretien de ton logement (les parties communes sont dans les charges)."} />
+            <div className="flex items-center justify-between pt-2.5 mt-1">
+              <span className="font-bold" style={{ fontSize: "14px", color: "#fff", ...font }}>Total {parAn ? "par an" : "par mois"}</span>
+              <span className="font-extrabold" style={{ fontSize: "16px", color: "#14F1D9", ...font }}>{fmt(r.coutTotalMensuel * k)}</span>
+            </div>
+          </div>
+
+          {/* Frais d'achat */}
+          <Section icon={PieChart} title="Frais d'achat">
+            <Ligne label="Prix du bien" valeur={fmt(r.prix)} />
+            <Ligne label="Frais de notaire" valeur={fmt(r.fraisNotaire)} sub={r.estNeuf ? "environ 2,5 % dans le neuf" : "environ 8 % dans l'ancien, surtout des taxes"} />
+            {r.travauxProbable > 0 && <Ligne label="Travaux" valeur={fmt(r.travauxProbable)} sub={r.postesTravaux.join(", ")} />}
+            <Ligne label="Garantie + frais de dossier" valeur={fmt(r.fraisGarantie + r.fraisDossier)} sub="caution ou hypothèque, et frais de la banque" />
+            <Ligne label="Budget total" valeur={fmt(r.budgetTotal)} accent="#14F1D9" />
+            <Ligne label="Apport" valeur={fmt(r.apport)} />
+            <Ligne label="Montant à emprunter" valeur={fmt(r.capitalEmprunte)} sub={`${r.duree} ans à ${pct(r.taux)}`} />
+            <Ligne label="Coût total du crédit" valeur={fmt(r.coutTotalCreditReel - r.capitalEmprunte)} sub="intérêts + assurance + frais" accent="#F87171" />
+            {r.creditAutorise > 0 && (
+              <Ligne label="Crédit accordé par ta banque" valeur={fmt(r.creditAutorise)} accent={r.creditAutorise >= r.capitalEmprunte ? C.green : "#F87171"}
+                sub={r.creditAutorise >= r.capitalEmprunte ? "suffisant pour ce projet ✓" : `il manque ${fmt(r.capitalEmprunte - r.creditAutorise)}`} />
+            )}
+          </Section>
+
+          {/* Budget */}
+          <Section icon={Scale} title="Ton budget">
+            {te === null ? (
+              <p style={{ fontSize: "13px", color: C.onDarkMuted, ...font }}>
+                Indique les revenus de ton foyer à l'étape « Ton budget » pour savoir si la banque peut te suivre et ce qu'il te restera pour vivre chaque mois.
+              </p>
+            ) : (<>
+              <Ligne label="Taux d'endettement" valeur={pct(te)} accent={couleurTE}
+                sub={te <= 35 ? "sous la limite de 35 % appliquée par les banques ✓" : "au-dessus de 35 % : les banques refusent dans la plupart des cas"} />
+              <Ligne label="Mensualité maximum à 35 %" valeur={fmt(r.mensualiteMax35)} sub="crédit + assurance, en tenant compte de tes crédits en cours" />
+              <Ligne label="Reste à vivre" valeur={fmt(r.resteAVivre)} accent={r.resteAVivre > 0 ? C.green : "#F87171"}
+                sub="ce qu'il te reste chaque mois après toutes les dépenses du logement et tes crédits" />
+            </>)}
+          </Section>
+
+          {/* Impôts et taxes */}
+          <Section icon={Receipt} title="Impôts et taxes">
+            <Ligne label="Taxe foncière" valeur={`${fmt(r.taxeFonciere)} / an`} sub={r.estNeuf ? "inclut les ordures ménagères · dans le neuf, exonération possible les 2 premières années selon la commune" : "inclut en général la taxe sur les ordures ménagères"} />
+            <Ligne label="Taxe d'habitation" valeur="0 €" accent={C.green} sub="supprimée sur la résidence principale" />
+            <Ligne label="Impôt sur le revenu" valeur="0 €" accent={C.green} sub="habiter ton logement ne crée pas de revenu imposable" />
+            <Ligne label="Plus-value à la revente" valeur="Exonérée" accent={C.green} sub="pas d'impôt sur le gain si c'est ta résidence principale" />
+          </Section>
+
+          {/* Louer ou acheter */}
+          <Section icon={Scale} title="Louer ou acheter ?">
+            <div className="flex items-center gap-1.5 mb-1" style={{ fontSize: "12.5px", color: C.onDarkMuted, ...font }}>
+              <span>{Number(loyerCorrige) > 0 ? "Loyer que tu as indiqué" : "Loyer d'un logement équivalent"}</span>
+              <InfoTip text="Loyer estimé pour ce même bien, d'après les données du Ministère du Logement. Corrige-le avec le crayon si tu connais mieux les loyers du secteur." />
+              <button onClick={() => setEditionLoyer((v) => !v)} className="ml-auto"><Pencil size={13} color="#8B5CF6" /></button>
+            </div>
+            {editionLoyer ? (
+              <input type="number" autoFocus value={loyerCorrige} onChange={(e) => setLoyerCorrige(e.target.value)} placeholder={String(r.loyerMarche || "")}
+                style={{ background: "transparent", border: "none", outline: "none", padding: 0, width: "100%", color: "#F59E0B", ...font }} className="font-extrabold text-[20px] mb-2" />
+            ) : (
+              <div className="font-extrabold mb-2" style={{ fontSize: "20px", color: "#F59E0B", ...font }}>{loyerComparaison > 0 ? `${fmt(loyerComparaison)} / mois` : "Non disponible"}</div>
+            )}
+            {loyerComparaison > 0 && (<>
+              <div className="p-3 rounded-2xl mb-3" style={{ background: "#12142F", border: "1px solid #2A3A5C" }}>
+                <p className="font-bold" style={{ fontSize: "14px", lineHeight: "1.45", color: "#fff", ...font }}>
+                  {louerAcheter.pointMort
+                    ? <>Acheter devient plus intéressant que louer au bout de <span style={{ color: "#14F1D9" }}>{louerAcheter.pointMort} an{louerAcheter.pointMort > 1 ? "s" : ""}</span>.</>
+                    : <>Avec ces chiffres, louer reste moins cher qu'acheter, même sur 30 ans.</>}
+                </p>
+                {louerAcheter.pointMort > 1 && (
+                  <p className="mt-1" style={{ fontSize: "12px", color: C.onDarkMuted, ...font }}>Si tu revends avant, louer t'aurait coûté moins cher.</p>
+                )}
+              </div>
+              <table className="w-full" style={{ fontSize: "12px", color: C.onDark, ...font }}>
+                <thead>
+                  <tr style={{ color: C.onDarkMuted }}>
+                    <th className="text-left py-1.5">Après</th>
+                    <th className="text-right py-1.5">Coût net achat</th>
+                    <th className="text-right py-1.5">Coût net location</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reperes.map((l) => {
+                    const achatGagne = l.coutNetAchat <= l.coutNetLocation;
+                    return (
+                      <tr key={l.an} style={{ borderTop: "1px solid #22304C" }}>
+                        <td className="py-1.5">{l.an} ans</td>
+                        <td className="text-right py-1.5 font-semibold" style={{ color: achatGagne ? C.green : C.onDark }}>{fmt(l.coutNetAchat)}</td>
+                        <td className="text-right py-1.5 font-semibold" style={{ color: achatGagne ? C.onDark : C.green }}>{fmt(l.coutNetLocation)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <p className="mt-2.5" style={{ fontSize: "11px", lineHeight: "1.45", color: C.onDarkMuted, ...font }}>
+                Coût net = ce que tu as payé moins ce que tu possèdes (valeur du bien − crédit restant). Hypothèses prudentes : prix du bien +1 %/an, loyers +1,5 %/an, apport placé à 2 %/an, sans frais de revente.
+              </p>
+            </>)}
+          </Section>
+
+          <div className="rounded-[26px] p-4 exion-fade" style={{ background: "linear-gradient(135deg, rgba(20,241,217,0.10), rgba(139,92,246,0.10))", border: "1px solid #3A3D6B" }}>
+            <div className="flex items-center gap-1.5 mb-2">
+              <Sparkles size={15} color="#A855F7" />
+              <span className="font-bold" style={{ fontSize: "13px", color: "#C4B5FD", ...font }}>Analyse IA</span>
+            </div>
+            <p style={{ fontSize: "13px", lineHeight: "1.5", color: "#D8D4F0", ...font }}>{analyseIARP(r)}</p>
+          </div>
+        </>)}
+
+        <button onClick={onDiscuter} className="w-full flex items-center justify-center gap-2 py-3.5 rounded-full font-semibold" style={{ fontSize: "14.5px", background: C.bgSoft, color: C.onDark, border: `1px solid #2A3A5C`, ...font }}>
+          <MessageCircle size={18} /> Poser une question sur ce bien
+        </button>
+        <p className="text-center mt-1" style={{ fontSize: "11px", color: C.onDarkMuted, ...font }}>Estimations indicatives. À vérifier : avis de taxe foncière, charges de copro, offre de prêt, diagnostics.</p>
       </div>
     </div>
   );
@@ -2840,6 +3383,7 @@ function EcranPro({ onBack, raison, profil, onDemandeCompte }) {
   const [erreur, setErreur] = useState("");
   const avantages = [
     "Analyses illimitées, tous les mois",
+    "Analyse « Acheter pour y vivre » complète",
     "Export PDF de tes analyses",
     "Annuaire VueBiens complet",
     "Simulateur de crédit + Estimation travaux",
@@ -3247,7 +3791,7 @@ export default function App() {
   }
 
   async function lancerAnalyse(f) {
-    window.exionTrack?.("AnalyseLancee");
+    window.exionTrack?.(f.mode === "rp" ? "AnalyseRPLancee" : "AnalyseLancee");
     setChargement(true);
     const prixM2Marche = await fetchPrixMarche(f.ville, f.codePostal, f.typeBien === "Appartement");
     const estAppart = f.typeBien === "Appartement";
@@ -3261,10 +3805,15 @@ export default function App() {
       loyerM2Final = await estimerLoyerIA(f.ville, f.codePostal, f.typeBien, prixM2Marche.valeur);
       sourceLoyer = loyerM2Final ? "IA" : null;
     }
-    const r = calculerAnalyse(f, prixM2Marche, loyerM2Final, sourceLoyer);
-    const prixMaxRentable = trouverPrixMaxRentable(f, prixM2Marche, loyerM2Final, sourceLoyer, 0);
-    const prixM2MaxRentable = r.surface > 0 ? Math.round(prixMaxRentable / r.surface) : 0;
-    const rFinal = { ...r, prixMaxRentable, prixM2MaxRentable };
+    let rFinal;
+    if (f.mode === "rp") {
+      rFinal = calculerAchatRP(f, prixM2Marche, loyerM2Final, sourceLoyer);
+    } else {
+      const r = calculerAnalyse(f, prixM2Marche, loyerM2Final, sourceLoyer);
+      const prixMaxRentable = trouverPrixMaxRentable(f, prixM2Marche, loyerM2Final, sourceLoyer, 0);
+      const prixM2MaxRentable = r.surface > 0 ? Math.round(prixMaxRentable / r.surface) : 0;
+      rFinal = { ...r, prixMaxRentable, prixM2MaxRentable };
+    }
     setResultat(rFinal); setChargement(false); setVue("resultat");
     window.exionTrack?.("ViewContent");
     const nouveauProjet = { id: Date.now(), ...rFinal };
@@ -3302,6 +3851,9 @@ export default function App() {
   const moisCourant = moisKey(Date.now());
   const analysesCeMois = analysesUsage.date === moisCourant ? analysesUsage.count : 0;
   const [raisonPro, setRaisonPro] = useState("");
+  const [proRetour, setProRetour] = useState("");
+  // Le retour vers le résultat ne vaut que si on quitte l'écran Pro par sa flèche retour
+  useEffect(() => { if (vue !== "pro") setProRetour(""); }, [vue]);
 
   function onNouveauAnalyse() {
     if (!estPro(profil) && analysesCeMois >= FREE_ANALYSES_PAR_MOIS) {
@@ -3326,7 +3878,7 @@ export default function App() {
       <div className="max-w-md mx-auto min-h-screen relative overflow-x-hidden" style={{ background: "transparent" }}>
         {vue === "accueil" && <VueAccueil projets={projets} onNouveau={onNouveauAnalyse} onOuvrir={(p) => { setResultat(p); setVue("resultat"); }} onSupprimer={supprimerProjet} onOutil={ouvrirOutil} onVoirBiens={onVoirBiensGate} onVoirOutils={() => setVue("outils")} onProfil={() => setVue("profil")} profil={profil} />}
         {vue === "biens" && <VueBiens onBack={() => setVue("accueil")} onNouveau={onNouveauAnalyse} />}
-        {vue === "pro" && <EcranPro onBack={() => setVue("accueil")} raison={raisonPro} profil={profil} onDemandeCompte={() => setVue("profil")} />}
+        {vue === "pro" && <EcranPro onBack={() => { setVue(proRetour || "accueil"); setProRetour(""); }} raison={raisonPro} profil={profil} onDemandeCompte={() => { setProRetour(""); setVue("profil"); }} />}
         {vue === "outils" && <VueOutils onBack={() => setVue("accueil")} onOutil={ouvrirOutil} />}
         {vue === "checklist" && <VueChecklist onBack={() => setVue("accueil")} />}
         {vue === "lexique" && <VueLexique onBack={() => setVue("accueil")} onVoirBail={() => setVue("bail")} />}
@@ -3335,7 +3887,9 @@ export default function App() {
         {vue === "travaux" && <VueTravaux onBack={() => setVue("accueil")} bien={bien} setBien={updateBien} travaux={travaux} setTravaux={updateTravaux} />}
         {vue === "calculateur" && <VueCalculateur onBack={() => setVue("accueil")} onVoirAnalyse={() => setVue("formulaire")} onOuvrirCredit={() => setVue("credit")} credit={credit} bien={bien} setBien={updateBien} />}
         {vue === "formulaire" && <VueFormulaire onCalculer={lancerAnalyse} chargement={chargement} onBack={() => setVue("accueil")} credit={credit} setCredit={updateCredit} bien={bien} setBien={updateBien} travaux={travaux} setTravaux={updateTravaux} />}
-        {vue === "resultat" && <VueResultat r={resultat} onDiscuter={() => setChatOuvert(true)} onBack={() => setVue("accueil")} verrouille={!profil?.email} onDebloquer={() => { setRetourResultat(true); setVue("profil"); }} />}
+        {vue === "resultat" && resultat?.mode === "rp" && <VueResultatRP r={resultat} onDiscuter={() => setChatOuvert(true)} onBack={() => setVue("accueil")} pro={estPro(profil)}
+          onPasserPro={() => { setRaisonPro("Le détail de l'analyse « Acheter pour y vivre » est réservé au plan Pro."); setProRetour("resultat"); setVue("pro"); }} />}
+        {vue === "resultat" && resultat?.mode !== "rp" && <VueResultat r={resultat} onDiscuter={() => setChatOuvert(true)} onBack={() => setVue("accueil")} verrouille={!profil?.email} onDebloquer={() => { setRetourResultat(true); setVue("profil"); }} />}
         {vue === "projets" && <VueProjets projets={projets} onNouveau={() => setVue("formulaire")} onOuvrir={(p) => { setResultat(p); setVue("resultat"); }} onSupprimer={supprimerProjet} />}
         {vue === "profil" && <VueProfil profil={profil} onSave={creerCompte} onRequestCode={demanderCode} onVerifyCode={verifierCode} onLogout={deconnecter} onDelete={supprimerCompte} nbProjets={projets.length} onVoirPro={() => { setRaisonPro(""); setVue("pro"); }} onOuvrirLegal={(p) => { setPageLegale(p); setVue("legal"); }} />}
         {vue === "legal" && <VueLegale page={pageLegale} onBack={() => setVue("profil")} />}
