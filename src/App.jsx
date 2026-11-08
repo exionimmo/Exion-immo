@@ -90,33 +90,54 @@ async function fetchPrixMarche(ville, codePostal, estAppartement) {
     const feat = geoData?.features?.[0];
     if (!feat) throw new Error("geocode vide");
     codeInsee = feat.properties?.citycode || null;
-    const [lon, lat] = feat.geometry.coordinates;
-    const typeCible = estAppartement ? "Appartement" : "Maison";
+    if (!codeInsee) throw new Error("code commune introuvable");
 
-    // Recherche par cercles progressifs : on part très localisé (1,5 km) pour capter
-    // le vrai niveau de prix du quartier, et on n'élargit que si trop peu de ventes
-    // comparables sont trouvées à ce rayon. Un rayon large mélange des secteurs à
-    // des prix très différents (centre-ville vs périphérie), donc on privilégie
-    // toujours le rayon le plus étroit possible.
-    const paliers = [1500, 3000, 7000, 15000, 25000];
-    for (const rayon of paliers) {
-      const dvfRes = await fetch(`https://api.cquest.org/dvf?lat=${lat}&lon=${lon}&dist=${rayon}`);
-      const dvfData = await dvfRes.json();
-      const ventes = (Array.isArray(dvfData) ? dvfData : []).filter((v) => v.valeur_fonciere && v.surface_relle_bati > 0);
-      const filtres = ventes.filter((v) => v.type_local === typeCible);
-      const utiles = filtres.length >= 3 ? filtres : ventes;
-      const prixM2 = utiles.map((v) => v.valeur_fonciere / v.surface_relle_bati).filter((p) => p > 500 && p < 15000).sort((a, b) => a - b);
-      const seuilSuffisant = rayon === paliers[paliers.length - 1] ? 3 : 5;
-      if (prixM2.length >= seuilSuffisant) {
+    // Ventes réelles DVF via l'API Données foncières du Cerema (service public).
+    // On garde les ventes de la commune, du même type de bien (111 = une maison,
+    // 121 = un appartement), d'abord sur les 4 dernières années, puis sur une
+    // période plus longue si la commune a trop peu de ventes récentes.
+    const codtypbien = estAppartement ? "121" : "111";
+    const anneeActuelle = new Date().getFullYear();
+    for (const anneeMin of [anneeActuelle - 4, anneeActuelle - 8]) {
+      const prixM2 = await ventesCommuneCerema(codeInsee, codtypbien, anneeMin);
+      if (prixM2.length >= 5) {
         const mid = Math.floor(prixM2.length / 2);
         const median = prixM2.length % 2 ? prixM2[mid] : (prixM2[mid - 1] + prixM2[mid]) / 2;
-        return { valeur: Math.round(median), source: "DVF", n: prixM2.length, rayonKm: rayon / 1000, codeInsee };
+        return { valeur: Math.round(median), source: "DVF", n: prixM2.length, rayonKm: null, perimetre: "commune", anneeMin, codeInsee };
       }
     }
-    throw new Error("pas assez de ventes, même à 25 km");
+    throw new Error("pas assez de ventes dans la commune");
   } catch (e) {
     return { valeur: estAppartement ? 1900 : 1600, source: "nationale", n: 0, rayonKm: null, codeInsee };
   }
+}
+
+async function ventesCommuneCerema(codeInsee, codtypbien, anneeMin) {
+  const base = `https://apidf-preprod.cerema.fr/dvf_opendata/mutations/?code_insee=${encodeURIComponent(codeInsee)}&codtypbien=${codtypbien}&anneemut_min=${anneeMin}&page_size=500`;
+  const prixM2 = [];
+  for (let page = 1; page <= 4; page++) {
+    const res = await fetch(`${base}&page=${page}`);
+    if (!res.ok) break;
+    const data = await res.json();
+    const resultats = Array.isArray(data?.results) ? data.results : [];
+    resultats.forEach((v) => {
+      const prix = Number(v.valeurfonc);
+      const surface = Number(v.sbati);
+      // garde-fous : vraie vente, bon type, année récente, prix/m² plausible
+      if (v.libnatmut !== "Vente" || String(v.codtypbien) !== codtypbien || Number(v.anneemut) < anneeMin) return;
+      if (!(prix > 0 && surface > 0)) return;
+      const p = prix / surface;
+      if (p > 500 && p < 15000) prixM2.push(p);
+    });
+    if (!data?.next || resultats.length === 0) break;
+  }
+  return prixM2.sort((a, b) => a - b);
+}
+
+function libelleSourceMarche(m) {
+  if (m.source !== "DVF") return "estimation nationale";
+  if (m.perimetre === "commune") return `${m.n} ventes réelles dans la commune depuis ${m.anneeMin}`;
+  return `${m.n} ventes DVF, rayon ${m.rayonKm} km`;
 }
 
 // Loyer moyen au m2/mois par departement, source : Ministere du Logement (DHUP),
@@ -381,7 +402,8 @@ function calculerAchatRP(f, prixM2Marche, loyerM2Estime, sourceLoyer) {
   const ecartMarchePct = Math.round(((prixM2Annonce - prixM2Marche.valeur) / prixM2Marche.valeur) * 100);
   const ecartMarcheEuros = prixAnnonce - valeurMarche;
   const marcheFiable = prixM2Marche.source === "DVF";
-  const verdict = verdictPrixRP(ecartMarchePct);
+  // Sans ventes réelles, on ne peut pas juger le prix : on ne dit pas « bonne affaire ».
+  const verdict = marcheFiable ? verdictPrixRP(ecartMarchePct) : "Prix à vérifier";
   const passoire = ["F", "G"].includes(f.dpe);
   const baseNegociation = marcheFiable ? Math.min(prixAnnonce * 0.97, valeurMarche * (passoire ? 0.95 : 1)) : prixAnnonce * 0.97;
   const prixConseille = Math.max(arrondirA(baseNegociation, 1000), 0);
@@ -620,6 +642,7 @@ const VERDICT_DOT = {
   "Prix correct": "#4ADE80",
   "Un peu au-dessus du marché": "#F59E0B",
   "Au-dessus du marché": "#EF4444",
+  "Prix à vérifier": "#9CA3AF",
 };
 
 function ProjectCard({ p, onOpen, onSupprimer }) {
@@ -653,7 +676,7 @@ function ProjectCard({ p, onOpen, onSupprimer }) {
           <div className="flex items-center justify-between pt-2.5" style={{ borderTop: "1px solid #22304C" }}>
             <div>
  <div style={{ fontSize: '10.5px', color: C.onDarkMuted, ...font }}>Écart au marché</div>
- <div className="font-bold" style={{ fontSize: '14px', color: p.ecartMarchePct <= 5 ? C.green : C.red, ...font }}>{p.ecartMarchePct > 0 ? "+" : ""}{p.ecartMarchePct}%</div>
+ <div className="font-bold" style={{ fontSize: '14px', color: !p.marcheFiable ? C.onDarkMuted : p.ecartMarchePct <= 5 ? C.green : C.red, ...font }}>{!p.marcheFiable ? "—" : `${p.ecartMarchePct > 0 ? "+" : ""}${p.ecartMarchePct}%`}</div>
             </div>
             <div>
  <div style={{ fontSize: '10.5px', color: C.onDarkMuted, ...font }}>Coût réel / mois</div>
@@ -2535,7 +2558,7 @@ function VueResultat({ r, onDiscuter, onBack, onVoirDetail, verrouille, onDebloq
           <div className="exion-fade space-y-2.5 pt-1">
             <Section icon={TrendingUp} title="Prix vs marché">
               <Ligne label="Prix affiché" valeur={`${fmt(r.prixAnnonce)}`} sub={`${fmt(r.prixM2Annonce)}/m²`} />
-              <Ligne label="Prix marché" valeur={`${fmt(r.prixM2Marche.valeur)}/m²`} sub={r.prixM2Marche.source === "DVF" ? `${r.prixM2Marche.n} ventes DVF, rayon ${r.prixM2Marche.rayonKm} km` : "estimation nationale"} />
+              <Ligne label="Prix marché" valeur={`${fmt(r.prixM2Marche.valeur)}/m²`} sub={libelleSourceMarche(r.prixM2Marche)} />
               <Ligne label="Écart" valeur={`${r.ecartMarchePct > 0 ? "+" : ""}${r.ecartMarchePct}%`} accent={r.ecartMarchePct < 0 ? C.greenDark : C.red} />
               <Ligne label="Max pour cash-flow neutre" valeur={`${fmt(r.prixM2MaxRentable)}/m²`} accent="#A855F7" />
             </Section>
@@ -2628,11 +2651,12 @@ const COULEUR_VERDICT_RP = {
   "Prix correct": "#4ADE80",
   "Un peu au-dessus du marché": "#FBBF24",
   "Au-dessus du marché": "#F87171",
+  "Prix à vérifier": "#9CA3AF",
 };
 
 function analyseIARP(r) {
   const phrases = [];
-  if (!r.marcheFiable) phrases.push("Peu de ventes comparables ont été trouvées autour de ce bien : la comparaison au marché est à prendre avec prudence.");
+  if (!r.marcheFiable) phrases.push("Pas assez de ventes récentes trouvées dans la commune : impossible de dire si le prix est bon. Compare avec les annonces et les ventes du secteur.");
   else if (r.ecartMarchePct <= -7) phrases.push(`Le prix est ${Math.abs(r.ecartMarchePct)} % sous le marché du secteur : c'est une bonne affaire sur le papier, vérifie qu'il n'y a pas de défaut caché.`);
   else if (r.ecartMarchePct <= 5) phrases.push("Le prix est dans la moyenne du secteur.");
   else phrases.push(`Le prix est ${r.ecartMarchePct} % au-dessus du marché : tu as de bons arguments pour négocier.`);
@@ -2714,12 +2738,18 @@ function VueResultatRP({ r, onDiscuter, onBack, pro, onPasserPro }) {
                 <span className="font-semibold uppercase tracking-wide" style={{ fontSize: "11.5px", color: C.onDarkMuted, ...font }}>Ce bien est-il au bon prix ?</span>
               </div>
               <div className="font-extrabold leading-tight" style={{ fontSize: "24px", color: couleur, ...font }}>{r.verdict}</div>
+              {r.marcheFiable ? (<>
               <div className="mt-1.5" style={{ fontSize: "13px", color: C.onDark, ...font }}>
                 {r.ecartMarchePct > 0 ? "+" : ""}{r.ecartMarchePct} % par rapport au marché
               </div>
               <div style={{ fontSize: "12px", color: C.onDarkMuted, ...font }}>
                 {r.ecartMarcheEuros > 0 ? `soit ${fmt(r.ecartMarcheEuros)} de plus que le prix du secteur` : `soit ${fmt(Math.abs(r.ecartMarcheEuros))} de moins que le prix du secteur`}
               </div>
+              </>) : (
+              <div className="mt-1.5" style={{ fontSize: "12.5px", color: C.onDarkMuted, ...font }}>
+                Pas assez de ventes récentes trouvées pour comparer ce prix au marché.
+              </div>
+              )}
             </div>
             <div className="relative w-20 h-20 shrink-0 ml-2">
               <svg viewBox="0 0 100 100" className="w-20 h-20 -rotate-90">
@@ -2741,7 +2771,7 @@ function VueResultatRP({ r, onDiscuter, onBack, pro, onPasserPro }) {
               <div className="flex items-center gap-1" style={{ fontSize: "11px", color: C.onDarkMuted, ...font }}>
                 Prix du marché
                 <InfoTip text={r.marcheFiable
-                  ? `Prix médian de ${r.prixM2Marche.n} ventes réelles (base DVF de l'État) dans un rayon de ${r.prixM2Marche.rayonKm} km.`
+                  ? `Prix médian au m² : ${libelleSourceMarche(r.prixM2Marche)} (base DVF de l'État, même type de bien).`
                   : "Pas assez de ventes trouvées autour de ce bien : c'est une moyenne nationale, à prendre avec prudence."} />
               </div>
               <div className="font-bold" style={{ fontSize: "14px", color: "#fff", ...font }}>{fmt(r.prixM2Marche.valeur)}/m²</div>
@@ -2750,7 +2780,7 @@ function VueResultatRP({ r, onDiscuter, onBack, pro, onPasserPro }) {
           {!r.marcheFiable && (
             <div className="mt-2.5 flex items-start gap-2 p-2.5 rounded-xl" style={{ background: "rgba(251,191,36,0.10)" }}>
               <AlertTriangle size={14} color="#FBBF24" className="shrink-0 mt-0.5" />
-              <span style={{ fontSize: "11.5px", color: "#FDE68A", ...font }}>Peu de ventes comparables dans ce secteur : verdict indicatif.</span>
+              <span style={{ fontSize: "11.5px", color: "#FDE68A", ...font }}>Le prix du marché affiché est une moyenne nationale, ne t'y fie pas : compare avec les annonces du secteur.</span>
             </div>
           )}
         </div>
