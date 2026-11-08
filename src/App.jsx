@@ -2687,9 +2687,146 @@ function analyseIARP(r) {
   return phrases.join(" ");
 }
 
+/* ---------- Message de négociation ---------- */
+
+// « à Le Val » → « au Val », « à Les Arcs » → « aux Arcs »
+function aVille(ville) {
+  const v = String(ville || "").trim();
+  if (/^le\s/i.test(v)) return `au ${v.slice(3)}`;
+  if (/^les\s/i.test(v)) return `aux ${v.slice(4)}`;
+  return `à ${v}`;
+}
+
+// Arguments factuels, uniquement ceux que l'analyse permet vraiment d'affirmer.
+function argumentsNegociation(r) {
+  const args = [];
+  const e = r.ecartAvecTravauxPct ?? r.ecartMarchePct;
+  if (r.marcheFiable && !r.prixTresBas && r.ecartMarchePct > 5) {
+    args.push(`le prix affiché correspond à ${fmt(r.prixM2Annonce)}/m², alors que les ventes récentes de ${r.typeBien === "Maison" ? "maisons" : "appartements"} ${aVille(r.ville)} se situent autour de ${fmt(r.prixM2Marche.valeur)}/m² (données publiques DVF)`);
+  } else if (r.marcheFiable && !r.prixTresBas && e > 5 && r.travauxProbable > 0) {
+    args.push(`une fois les travaux ajoutés, le bien reviendrait à ${fmt(r.prixM2AvecTravaux)}/m², au-dessus des ventes récentes du secteur (environ ${fmt(r.prixM2Marche.valeur)}/m²)`);
+  }
+  if (r.travauxProbable > 0) {
+    const postes = (r.postesTravaux || []).slice(0, 4).join(", ").toLowerCase();
+    args.push(`le bien nécessite des travaux que j'estime à environ ${fmt(r.travauxProbable)}${postes ? ` (${postes})` : ""}`);
+  }
+  if (r.passoire) args.push(`le DPE classé ${r.dpe} implique des travaux de rénovation énergétique et des factures de chauffage élevées`);
+  else if (r.dpe === "E") args.push("le DPE classé E laisse prévoir des travaux d'isolation à moyen terme");
+  return args;
+}
+
+function messageNegociationLocal(r, prixOffre) {
+  const args = argumentsNegociation(r);
+  const bien = `${r.typeBien === "Maison" ? "la maison" : "l'appartement"} de ${r.surface} m² situé${r.typeBien === "Maison" ? "e" : ""} ${aVille(r.ville)}`;
+  const lignes = [
+    "Bonjour,",
+    "",
+    `Suite à ma visite, je suis intéressé(e) par ${bien}, proposé${r.typeBien === "Maison" ? "e" : ""} à ${fmt(r.prixAnnonce)}.`,
+    "",
+    `Je souhaite vous faire une offre d'achat à ${fmt(prixOffre)}${r.prixAnnonce > prixOffre ? `, soit ${fmt(r.prixAnnonce - prixOffre)} de moins que le prix affiché` : ""}.`,
+  ];
+  if (args.length) {
+    lignes.push("", "Cette proposition tient compte des éléments suivants :");
+    args.forEach((a) => lignes.push(`- ${a.charAt(0).toUpperCase()}${a.slice(1)} ;`));
+    lignes[lignes.length - 1] = lignes[lignes.length - 1].replace(/ ;$/, ".");
+  }
+  lignes.push(
+    "",
+    `Mon projet est sérieux${r.apport > 0 ? ` : je dispose d'un apport de ${fmt(r.apport)}` : ""} et mon financement est à l'étude. Cette offre est faite sous réserve de l'obtention de mon prêt et reste valable 10 jours.`,
+    "",
+    "Je reste disponible pour en discuter.",
+    "",
+    "Bien cordialement,",
+    "[Ton prénom et nom]",
+    "[Ton téléphone]",
+  );
+  return lignes.join("\n");
+}
+
+function CarteMessageNegociation({ r }) {
+  const [ouvert, setOuvert] = useState(false);
+  const [prixOffre, setPrixOffre] = useState(String(r.prixConseille || r.prixAnnonce));
+  const [message, setMessage] = useState("");
+  const [chargement, setChargement] = useState(false);
+  const [copie, setCopie] = useState(false);
+
+  async function rediger() {
+    const offre = Number(prixOffre) > 0 ? Number(prixOffre) : r.prixConseille;
+    setChargement(true); setCopie(false);
+    window.exionTrack?.("MessageNegociation");
+    let texte = "";
+    try {
+      const res = await fetch(NEGOCIATION_API_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prixOffre: offre,
+          arguments: argumentsNegociation(r),
+          bien: {
+            typeBien: r.typeBien, ville: r.ville, codePostal: r.codePostal, surface: r.surface, dpe: r.dpe,
+            prixAnnonce: r.prixAnnonce, prixM2Annonce: r.prixM2Annonce,
+            prixM2Marche: r.marcheFiable ? r.prixM2Marche.valeur : null, sourceMarche: r.marcheFiable ? libelleSourceMarche(r.prixM2Marche) : null,
+            travaux: r.travauxProbable, postesTravaux: r.postesTravaux, apport: r.apport, prixTresBas: !!r.prixTresBas,
+          },
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data?.reply === "string" && data.reply.trim().length > 80) texte = data.reply.trim();
+      }
+    } catch (e) { /* on retombe sur le modèle ci-dessous */ }
+    setMessage(texte || messageNegociationLocal(r, offre));
+    setChargement(false);
+  }
+
+  async function copier() {
+    try { await navigator.clipboard.writeText(message); setCopie(true); setTimeout(() => setCopie(false), 2000); } catch (e) {}
+  }
+
+  if (!ouvert) {
+    return (
+      <button onClick={() => { setOuvert(true); rediger(); }} className="w-full flex items-center justify-center gap-2 py-3.5 rounded-full font-bold text-white exion-press" style={{ fontSize: "14px", background: C.gradient, boxShadow: "0 8px 22px rgba(139,92,246,0.35)", ...font }}>
+        <Pencil size={16} /> Rédiger mon offre au vendeur
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-[22px] p-4 exion-fade" style={{ background: "#1A1B42", border: "1px solid #3A3D6B" }}>
+      <div className="flex items-center gap-1.5 mb-2">
+        <Sparkles size={14} color="#A855F7" />
+        <span className="font-semibold uppercase tracking-wide" style={{ fontSize: "11.5px", color: "#C4B5FD", ...font }}>Ton offre au vendeur</span>
+        <InfoTip text="Message prêt à envoyer à l'agence ou au vendeur, avec des arguments tirés de l'analyse. Relis-le et adapte-le avant de l'envoyer : c'est toi qui t'engages." />
+      </div>
+      <div className="flex items-end gap-2 mb-3">
+        <label className="flex-1">
+          <span className="block mb-1" style={{ fontSize: "12px", color: C.onDarkMuted, ...font }}>Prix que tu proposes (€)</span>
+          <TextInput type="number" value={prixOffre} onChange={(e) => setPrixOffre(e.target.value)} />
+        </label>
+        <button onClick={rediger} disabled={chargement} className="shrink-0 px-4 py-3 rounded-2xl font-semibold exion-press disabled:opacity-50" style={{ fontSize: "13px", background: "#12142F", color: C.onDark, border: "1px solid #2A3A5C", ...font }}>
+          {chargement ? <Loader2 size={16} className="animate-spin" /> : "Réécrire"}
+        </button>
+      </div>
+      {chargement && !message ? (
+        <div className="flex items-center gap-2 py-6 justify-center" style={{ fontSize: "13px", color: C.onDarkMuted, ...font }}>
+          <Loader2 size={16} className="animate-spin" /> Rédaction en cours…
+        </div>
+      ) : (
+        <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={14}
+          className="w-full p-3 rounded-2xl outline-none"
+          style={{ background: "#12142F", border: "1px solid #2A3A5C", color: C.onDark, fontSize: "13px", lineHeight: "1.5", resize: "vertical", ...font }} />
+      )}
+      <button onClick={copier} disabled={!message} className="w-full mt-2.5 flex items-center justify-center gap-2 py-3 rounded-full font-bold text-white exion-press disabled:opacity-50" style={{ fontSize: "14px", background: C.gradient, ...font }}>
+        {copie ? <><Check size={16} /> Copié !</> : <><ClipboardList size={16} /> Copier le message</>}
+      </button>
+      <p className="mt-2 text-center" style={{ fontSize: "11px", color: C.onDarkMuted, ...font }}>Pense à remplacer ton nom et ton téléphone avant d'envoyer.</p>
+    </div>
+  );
+}
+
 function CarteProRP({ onPasserPro }) {
   const avantages = [
-    "Le prix à proposer pour négocier",
+    "Le prix à proposer et ton offre au vendeur rédigée",
     "Le détail de toutes tes dépenses, mois par mois",
     "Les frais d'achat et le budget total",
     "Ton taux d'endettement et ton reste à vivre",
@@ -2855,6 +2992,8 @@ function VueResultatRP({ r, onDiscuter, onBack, pro, onPasserPro }) {
               {r.travauxProbable > 0 && <p style={{ fontSize: "12px", color: "#E5E7F5", ...font }}>• Argument : {fmt(r.travauxProbable)} de travaux à prévoir.</p>}
             </div>
           </div>
+
+          <CarteMessageNegociation r={r} />
 
           {/* Coût détaillé */}
           <div className="rounded-[26px] p-4 exion-fade" style={{ background: "#1A1B42", border: "1px solid #2A3A5C" }}>
@@ -3408,6 +3547,7 @@ function VueProfil({ profil, onSave, onRequestCode, onVerifyCode, onLogout, onDe
    fois le workflow importé et activé dans n8n.
 ============================================================ */
 const CHAT_API_ENDPOINT = "https://primary-production-a6e13.up.railway.app/webhook/exion-chat-ia";
+const NEGOCIATION_API_ENDPOINT = "https://primary-production-a6e13.up.railway.app/webhook/exion-negociation";
 const ESTIMER_LOYER_API_ENDPOINT = "https://primary-production-a6e13.up.railway.app/webhook/exion-estimer-loyer";
 const ACCOUNT_API_SIGNUP = "https://primary-production-a6e13.up.railway.app/webhook/exion-signup";
 const ACCOUNT_API_LOGIN = "https://primary-production-a6e13.up.railway.app/webhook/exion-login";
