@@ -113,7 +113,8 @@ async function fetchPrixMarche(ville, codePostal, estAppartement) {
 }
 
 async function ventesCommuneCerema(codeInsee, codtypbien, anneeMin) {
-  const base = `https://apidf-preprod.cerema.fr/dvf_opendata/mutations/?code_insee=${encodeURIComponent(codeInsee)}&codtypbien=${codtypbien}&anneemut_min=${anneeMin}&page_size=500`;
+  // Passe par le relais /api/dvf (fichier api/dvf.js) : le navigateur ne peut pas appeler le Cerema directement.
+  const base = `/api/dvf?code_insee=${encodeURIComponent(codeInsee)}&codtypbien=${codtypbien}&anneemut_min=${anneeMin}`;
   const prixM2 = [];
   for (let page = 1; page <= 4; page++) {
     const res = await fetch(`${base}&page=${page}`);
