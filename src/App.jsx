@@ -84,11 +84,13 @@ const fmt = (n) => (n === null || n === undefined || isNaN(n) ? "—" : Math.rou
 
 async function fetchPrixMarche(ville, codePostal, estAppartement) {
   let codeInsee = null;
+  let etape = "code commune";
   try {
     const geoRes = await fetch(`/api/dvf?ville=${encodeURIComponent(String(ville).trim())}&cp=${encodeURIComponent(String(codePostal).trim())}`);
     const geoData = await geoRes.json();
     codeInsee = geoData?.code_insee || null;
-    if (!codeInsee) throw new Error("code commune introuvable");
+    if (!codeInsee) throw new Error(`code commune introuvable (statut ${geoRes.status}, ville « ${ville} », cp « ${codePostal} »)`);
+    etape = "ventes";
 
     // Ventes réelles DVF via l'API Données foncières du Cerema (service public).
     // On garde les ventes de la commune, du même type de bien (111 = une maison,
@@ -98,16 +100,18 @@ async function fetchPrixMarche(ville, codePostal, estAppartement) {
     const anneeActuelle = new Date().getFullYear();
     for (const anneeMin of [anneeActuelle - 4, anneeActuelle - 8]) {
       const prixM2 = await ventesCommuneCerema(codeInsee, codtypbien, anneeMin);
+      etape = `ventes (${prixM2.length} gardées depuis ${anneeMin})`;
       if (prixM2.length >= 5) {
         const mid = Math.floor(prixM2.length / 2);
         const median = prixM2.length % 2 ? prixM2[mid] : (prixM2[mid - 1] + prixM2[mid]) / 2;
         return { valeur: Math.round(median), source: "DVF", n: prixM2.length, rayonKm: null, perimetre: "commune", anneeMin, codeInsee };
       }
     }
-    throw new Error("pas assez de ventes dans la commune");
+    throw new Error(`pas assez de ventes dans la commune ${codeInsee}`);
   } catch (e) {
-    console.warn("[Exion] prix du marché indisponible :", e?.message || e);
-    return { valeur: estAppartement ? 1900 : 1600, source: "nationale", n: 0, rayonKm: null, codeInsee };
+    const erreur = `${etape} : ${e?.message || e}`;
+    console.warn("[Exion] prix du marché indisponible :", erreur);
+    return { valeur: estAppartement ? 1900 : 1600, source: "nationale", n: 0, rayonKm: null, codeInsee, erreur };
   }
 }
 
@@ -117,7 +121,7 @@ async function ventesCommuneCerema(codeInsee, codtypbien, anneeMin) {
   const prixM2 = [];
   for (let page = 1; page <= 4; page++) {
     const res = await fetch(`${base}&page=${page}`);
-    if (!res.ok) break;
+    if (!res.ok) { if (page === 1) throw new Error(`relais ventes statut ${res.status}`); break; }
     const data = await res.json();
     const resultats = Array.isArray(data?.results) ? data.results : [];
     resultats.forEach((v) => {
@@ -2953,7 +2957,7 @@ function VueResultatRP({ r, onDiscuter, onBack, pro, onPasserPro }) {
           {!r.marcheFiable && (
             <div className="mt-2.5 flex items-start gap-2 p-2.5 rounded-xl" style={{ background: "rgba(251,191,36,0.10)" }}>
               <AlertTriangle size={14} color="#FBBF24" className="shrink-0 mt-0.5" />
-              <span style={{ fontSize: "11.5px", color: "#FDE68A", ...font }}>Le prix du marché affiché est une moyenne nationale, ne t'y fie pas : compare avec les annonces du secteur.</span>
+              <span style={{ fontSize: "11.5px", color: "#FDE68A", ...font }}>Le prix du marché affiché est une moyenne nationale, ne t'y fie pas : compare avec les annonces du secteur.{r.prixM2Marche?.erreur && <><br /><span style={{ fontSize: "10px", opacity: 0.7 }}>Détail technique : {r.prixM2Marche.erreur}</span></>}</span>
             </div>
           )}
         </div>
