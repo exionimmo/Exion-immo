@@ -80,7 +80,46 @@ function regrouperVentes(lignes) {
   return ventes;
 }
 
+const sansAccents = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+// Trouve le code INSEE d'une commune à partir de son nom et de son code postal.
+// Fait côté serveur : plus fiable que depuis le navigateur du visiteur.
+async function codeCommune(ville, cp) {
+  const nom = sansAccents(ville);
+  try {
+    const r = await fetch(`https://geo.api.gouv.fr/communes?codePostal=${encodeURIComponent(cp)}&fields=nom,code`);
+    if (r.ok) {
+      const communes = await r.json();
+      if (Array.isArray(communes) && communes.length) {
+        const exacte = communes.find((c) => sansAccents(c.nom) === nom);
+        const proche = communes.find((c) => nom && (sansAccents(c.nom).includes(nom) || nom.includes(sansAccents(c.nom))));
+        const c = exacte || proche || (communes.length === 1 ? communes[0] : null);
+        if (c) return c.code;
+      }
+    }
+  } catch (e) {}
+  try {
+    const r = await fetch(`https://data.geopf.fr/geocodage/search?q=${encodeURIComponent(ville)}&postcode=${encodeURIComponent(cp)}&type=municipality&limit=1`);
+    if (r.ok) {
+      const d = await r.json();
+      return d?.features?.[0]?.properties?.citycode || null;
+    }
+  } catch (e) {}
+  return null;
+}
+
 export default async function handler(req, res) {
+  // Mode « code commune » : /api/dvf?ville=Fréjus&cp=83600
+  if (req.query?.ville !== undefined) {
+    const ville = String(req.query.ville || "").slice(0, 80);
+    const cp = String(req.query.cp || "").trim();
+    if (!/^[0-9][0-9AB][0-9]{3}$/.test(cp)) return res.status(400).json({ error: "code postal invalide" });
+    const code_insee = await codeCommune(ville, cp);
+    res.setHeader("Cache-Control", "s-maxage=86400, stale-while-revalidate=604800");
+    return res.status(200).json({ code_insee });
+  }
+
   const { code_insee = "", codtypbien = "", anneemut_min = "", page = "1" } = req.query || {};
   if (!/^[0-9][0-9AB][0-9]{3}$/.test(code_insee) || !["111", "121"].includes(codtypbien)
     || !/^[0-9]{4}$/.test(anneemut_min) || !/^[1-9][0-9]?$/.test(page)) {
