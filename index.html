@@ -15,6 +15,8 @@
   <script>
 (function () {
   try {
+    if (location.search.indexOf('moi=1') !== -1) localStorage.setItem('exion_moi', '1');
+    if (localStorage.getItem('exion_moi') === '1') return;
     var d = new Date();
     var mois = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
     var id = localStorage.getItem('exion_vid');
