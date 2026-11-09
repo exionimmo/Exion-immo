@@ -122,13 +122,25 @@ async function codeCommune(ville, cp) {
   return null;
 }
 
+// Paris, Lyon et Marseille : les ventes (et les loyers) sont rangées par
+// arrondissement. On remplace le code de la ville par celui de l'arrondissement,
+// déduit du code postal (75011 -> 75111, 69003 -> 69383, 13008 -> 13208).
+function codeArrondissement(code, cp) {
+  const n = Number(cp.slice(-2));
+  if (code === "75056" && /^75(0(0[1-9]|1[0-9]|20)|116)$/.test(cp)) return cp === "75116" ? "75116" : `751${cp.slice(-2)}`;
+  if (code === "69123" && n >= 1 && n <= 9 && cp.startsWith("6900")) return `6938${n}`;
+  if (code === "13055" && n >= 1 && n <= 16 && cp.startsWith("130")) return `132${cp.slice(-2)}`;
+  return code;
+}
+
 export default async function handler(req, res) {
   // Mode « code commune » : /api/dvf?ville=Fréjus&cp=83600
   if (req.query?.ville !== undefined) {
     const ville = String(req.query.ville || "").slice(0, 80);
     const cp = String(req.query.cp || "").trim();
     if (!/^[0-9][0-9AB][0-9]{3}$/.test(cp)) return res.status(400).json({ error: "code postal invalide" });
-    const code_insee = await codeCommune(ville, cp);
+    const trouve = await codeCommune(ville, cp);
+    const code_insee = trouve ? codeArrondissement(trouve, cp) : null;
     res.setHeader("Cache-Control", "s-maxage=86400, stale-while-revalidate=604800");
     return res.status(200).json({ code_insee });
   }
