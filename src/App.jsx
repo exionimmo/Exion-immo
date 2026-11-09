@@ -85,11 +85,9 @@ const fmt = (n) => (n === null || n === undefined || isNaN(n) ? "—" : Math.rou
 async function fetchPrixMarche(ville, codePostal, estAppartement) {
   let codeInsee = null;
   try {
-    const geoRes = await fetch(`https://data.geopf.fr/geocodage/search?q=${encodeURIComponent(ville)}&postcode=${encodeURIComponent(codePostal)}&limit=1`);
+    const geoRes = await fetch(`/api/dvf?ville=${encodeURIComponent(String(ville).trim())}&cp=${encodeURIComponent(String(codePostal).trim())}`);
     const geoData = await geoRes.json();
-    const feat = geoData?.features?.[0];
-    if (!feat) throw new Error("geocode vide");
-    codeInsee = feat.properties?.citycode || null;
+    codeInsee = geoData?.code_insee || null;
     if (!codeInsee) throw new Error("code commune introuvable");
 
     // Ventes réelles DVF via l'API Données foncières du Cerema (service public).
@@ -108,6 +106,7 @@ async function fetchPrixMarche(ville, codePostal, estAppartement) {
     }
     throw new Error("pas assez de ventes dans la commune");
   } catch (e) {
+    console.warn("[Exion] prix du marché indisponible :", e?.message || e);
     return { valeur: estAppartement ? 1900 : 1600, source: "nationale", n: 0, rayonKm: null, codeInsee };
   }
 }
