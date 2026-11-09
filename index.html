@@ -12,6 +12,27 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
     <link rel="preload" as="image" href="/img/hero.webp" fetchpriority="high" />
   </head>
+  <script>
+(function () {
+  try {
+    var d = new Date();
+    var mois = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    var id = localStorage.getItem('exion_vid');
+    if (!id) {
+      id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2);
+      localStorage.setItem('exion_vid', id);
+    }
+    if (localStorage.getItem('exion_vmois') === mois) return;
+    fetch('https://primary-production-a6e13.up.railway.app/webhook/visite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ visiteur_id: id, mois: mois })
+    }).then(function (r) {
+      if (r.ok) localStorage.setItem('exion_vmois', mois);
+    }).catch(function () {});
+  } catch (e) {}
+})();
+</script>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
