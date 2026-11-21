@@ -599,11 +599,11 @@ function PrimaryButton({ children, ...props }) {
     </button>
   );
 }
-function Ligne({ label, valeur, accent, sub }) {
+function Ligne({ label, valeur, accent, sub, info }) {
   return (
     <div className="flex items-start justify-between py-2.5" style={{ borderBottom: `1px solid #22304C` }}>
       <div>
- <div className="" style={{ fontSize: '14px',  color: C.onDark, ...font }}>{label}</div>
+ <div className="flex items-center gap-1" style={{ fontSize: '14px',  color: C.onDark, ...font }}>{label}{info && <InfoTip text={info} />}</div>
  {sub && <div className="mt-0.5" style={{ fontSize: '12px',  color: C.onDarkMuted, ...font }}>{sub}</div>}
       </div>
  <span className="font-semibold shrink-0 ml-3" style={{ fontSize: '15px',  color: accent || "#fff", ...font }}>{valeur}</span>
@@ -3034,7 +3034,9 @@ function VueResultatRP({ r, onDiscuter, onBack, pro, onPasserPro }) {
             <Ligne label="Budget total" valeur={fmt(r.budgetTotal)} accent="#14F1D9" />
             <Ligne label="Apport" valeur={fmt(r.apport)} />
             <Ligne label="Montant à emprunter" valeur={fmt(r.capitalEmprunte)} sub={`${r.duree} ans à ${pct(r.taux)}`} />
-            <Ligne label="Coût total du crédit" valeur={fmt(r.coutTotalCreditReel - r.capitalEmprunte)} sub="intérêts + assurance + frais" accent="#F87171" />
+            <Ligne label="Coût total du crédit" valeur={fmt(r.coutTotalCreditReel - r.capitalEmprunte)} accent="#F87171"
+              sub={`ce que le prêt te coûte en plus des ${fmt(r.capitalEmprunte)} empruntés, sur ${r.duree} ans`}
+              info={`C'est le prix du crédit : l'argent que tu verses à la banque en plus de la somme empruntée. Sur ${r.duree} ans : ${fmt(r.coutInterets)} d'intérêts, ${fmt(r.assuranceMensuelle * r.duree * 12)} d'assurance emprunteur (${fmt(r.assuranceMensuelle)}/mois) et ${fmt(r.fraisGarantie + r.fraisDossier)} de garantie et frais de dossier. Au total, tu rembourseras environ ${fmt(r.coutTotalCreditReel)} pour ${fmt(r.capitalEmprunte)} empruntés. Plus la durée est longue, plus ce coût augmente.`} />
             {r.creditAutorise > 0 && (
               <Ligne label="Crédit accordé par ta banque" valeur={fmt(r.creditAutorise)} accent={r.creditAutorise >= r.capitalEmprunte ? C.green : "#F87171"}
                 sub={r.creditAutorise >= r.capitalEmprunte ? "suffisant pour ce projet ✓" : `il manque ${fmt(r.capitalEmprunte - r.creditAutorise)}`} />
@@ -3049,6 +3051,7 @@ function VueResultatRP({ r, onDiscuter, onBack, pro, onPasserPro }) {
               </p>
             ) : (<>
               <Ligne label="Taux d'endettement" valeur={pct(te)} accent={couleurTE}
+                info={`C'est la part de tes revenus qui part chaque mois dans tes crédits. Calcul : (mensualité de ce prêt avec assurance ${fmt(r.mensualiteAvecAssurance)}${r.creditsEnCours > 0 ? ` + tes crédits en cours ${fmt(r.creditsEnCours)}` : ""}) ÷ tes revenus nets ${fmt(r.revenusFoyer)}. Les banques appliquent une limite de 35 %, assurance comprise : au-dessus, elles refusent sauf rares exceptions. Pour baisser ce taux : plus d'apport, une durée plus longue, un prix plus bas ou solder un crédit en cours.`}
                 sub={te <= 35 ? "sous la limite de 35 % appliquée par les banques ✓" : "au-dessus de 35 % : les banques refusent dans la plupart des cas"} />
               <Ligne label="Mensualité maximum à 35 %" valeur={fmt(r.mensualiteMax35)} sub="crédit + assurance, en tenant compte de tes crédits en cours" />
               <Ligne label="Reste à vivre" valeur={fmt(r.resteAVivre)} accent={r.resteAVivre > 0 ? C.green : "#F87171"}
@@ -3061,7 +3064,8 @@ function VueResultatRP({ r, onDiscuter, onBack, pro, onPasserPro }) {
             <Ligne label="Taxe foncière" valeur={`${fmt(r.taxeFonciere)} / an`} sub={r.estNeuf ? "inclut les ordures ménagères · dans le neuf, exonération possible les 2 premières années selon la commune" : "inclut en général la taxe sur les ordures ménagères"} />
             <Ligne label="Taxe d'habitation" valeur="0 €" accent={C.green} sub="supprimée sur la résidence principale" />
             <Ligne label="Impôt sur le revenu" valeur="0 €" accent={C.green} sub="habiter ton logement ne crée pas de revenu imposable" />
-            <Ligne label="Plus-value à la revente" valeur="Exonérée" accent={C.green} sub="pas d'impôt sur le gain si c'est ta résidence principale" />
+            <Ligne label="Plus-value à la revente" valeur="Exonérée" accent={C.green} sub="si c'est ta résidence principale le jour de la vente, sans durée minimum"
+              info="La loi n'impose aucune durée minimum d'occupation : le gain est exonéré si le logement est ta résidence principale (là où tu vis la majeure partie de l'année) au moment de la vente. Le fisc peut vérifier que tu y habitais vraiment, donc une revente très rapide peut attirer son attention. Les durées de 22 et 30 ans que l'on entend souvent concernent les autres biens : résidence secondaire ou investissement locatif." />
           </Section>
 
           {/* Louer ou acheter */}
